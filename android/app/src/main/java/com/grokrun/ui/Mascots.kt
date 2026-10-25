@@ -44,6 +44,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.grokrun.R
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.translate
 
 /** Os seis mascotes desenhados pelo Ricardo. [id] é o valor salvo no JSON do treino e no Room. */
 enum class Mascot(
@@ -104,9 +107,14 @@ val Mascot.runSheetSmall: Int
 const val RUN_FRAMES = 16
 /** 1,3 ciclo por segundo = 2,6 passadas por segundo. */
 const val RUN_HZ = 1.3f
-/** O quadro tem 600×540 no espaço do sprite antigo (512 px de altura), com o boneco centralizado. */
+/**
+ * O quadro tem 600×580 no espaço do sprite antigo (512 px de altura), centralizado no mesmo lugar:
+ * sobra espaço para os joelhos, a fase de voo (os dois pés no ar) e o quique do ciclo v2.
+ */
 private const val FRAME_W = 600f / 512f
-private const val FRAME_H = 540f / 512f
+private const val FRAME_H = 580f / 512f
+/** Quadro de voo (pé de trás saindo, o da frente esticado): usado congelado nos pulos do jogo. */
+const val RUN_FLIGHT_FRAME = 6
 
 /** Relógio próprio (segundos) para quem não tem um. Só lê o estado no desenho: não recompõe a cada quadro. */
 @Composable
@@ -159,22 +167,37 @@ fun RunningMascot(m: Mascot, size: Dp, modifier: Modifier = Modifier, periodMs: 
     }
 }
 
-/** Raia de pista: fundo terracota com linhas brancas. */
+/**
+ * Raia de pista dentro de um pedacinho de campo: céu em degradê do tema em cima, grama atrás e
+ * na frente da pista (terracota com linhas brancas). O conteúdo corre sobre a raia.
+ */
 @Composable
 fun RunningLane(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val theme = LocalGrokTheme.current
+    val grass = ImageBitmap.imageResource(R.drawable.bg_meadow_grass)
     Box(modifier.clipToBounds(), contentAlignment = Alignment.BottomCenter) {
-        Canvas(Modifier.fillMaxWidth().height(70.dp)) {
-            drawRect(Color(0xFFC8553D))
-            val w = 4.dp.toPx()
-            drawLine(Color.White, Offset(0f, w), Offset(size.width, w), w)
-            drawLine(Color.White, Offset(0f, size.height - w), Offset(size.width, size.height - w), w)
-            var x = 0f
-            while (x < size.width) {
-                drawLine(Color.White.copy(alpha = 0.7f), Offset(x, size.height / 2), Offset(x + 30.dp.toPx(), size.height / 2), 3.dp.toPx())
-                x += 60.dp.toPx()
+        Canvas(Modifier.matchParentSize()) {
+            drawRect(meadowSky(theme))
+            val laneH = 54.dp.toPx()
+            val front = 12.dp.toPx()
+            val laneTop = size.height - front - laneH
+            // grama do fundo (até um pouco atrás da raia) e a beirada da frente
+            val backH = 30.dp.toPx()
+            drawGrassStrip(grass, laneTop - backH + 6.dp.toPx(), backH, theme.dark)
+            drawGrassStrip(grass, size.height - front - 3.dp.toPx(), front + 3.dp.toPx() + 30.dp.toPx(), theme.dark)
+            translate(top = laneTop) {
+                drawRect(Color(0xFFC8553D), size = Size(size.width, laneH))
+                val w = 3.dp.toPx()
+                drawLine(Color.White, Offset(0f, w / 2), Offset(size.width, w / 2), w)
+                drawLine(Color.White, Offset(0f, laneH - w / 2), Offset(size.width, laneH - w / 2), w)
+                var x = 0f
+                while (x < size.width) {
+                    drawLine(Color.White.copy(alpha = 0.7f), Offset(x, laneH / 2), Offset(x + 30.dp.toPx(), laneH / 2), 3.dp.toPx())
+                    x += 60.dp.toPx()
+                }
             }
         }
-        content()
+        Box(Modifier.padding(bottom = 10.dp)) { content() }
     }
 }
 

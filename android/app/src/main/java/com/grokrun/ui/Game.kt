@@ -185,7 +185,7 @@ fun RaceGameScreen(onBack: () -> Unit) {
                     time = { frame.longValue; sim.time },
                     hz = 1.5f,
                     // no ar: perna da frente encolhida, sem "correr no vento"
-                    frozenFrame = { if (sim.y > 2f) 11 else null },
+                    frozenFrame = { if (sim.y > 2f) RUN_FLIGHT_FRAME else null },
                 )
             }
             if (phase != "run") {

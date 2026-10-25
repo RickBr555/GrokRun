@@ -46,6 +46,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.grokrun.GrokApplication
+import com.grokrun.R
 import com.grokrun.data.AppPrefs
 import com.grokrun.data.PointEntity
 import com.grokrun.data.PresetEntity
@@ -293,7 +294,7 @@ fun TirosSetupScreen(onBack: () -> Unit, onGo: () -> Unit) {
     if (showPresets) PresetsSheet(presets, { showPresets = false }, { p -> load(p); showPresets = false; presetToast(ctx, p) }) { p ->
         scope.launch { withContext(Dispatchers.IO) { app.db.workouts().deletePreset(p.id) }; reload() }
     }
-    MeadowBackground {
+    MeadowBackground(critters = listOf(R.drawable.mascot_triangulo_idle, R.drawable.mascot_quadrado_rest, R.drawable.mascot_hexagono_idle)) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         BackBar("Tiros", onBack)
         PresetChips(presets) { p -> load(p) }
@@ -329,7 +330,7 @@ fun TirosSetupScreen(onBack: () -> Unit, onGo: () -> Unit) {
             prefs.edit().putString("lastTiros", cfgJson().toString()).apply()
             startWorkout(ctx, cfgJson()); onGo()
         }, Modifier.fillMaxWidth(), BtnKind.CINDER, 24.sp, 58.dp, enabled = sprint > 0)
-        Spacer(Modifier.height(64.dp))
+        Spacer(Modifier.height(104.dp))
     }
     }
 }
@@ -356,7 +357,7 @@ fun CorridaSetupScreen(onBack: () -> Unit, onGo: () -> Unit) {
     if (showPresets) PresetsSheet(presets, { showPresets = false }, { p -> load(p); showPresets = false; presetToast(ctx, p) }) { p ->
         scope.launch { withContext(Dispatchers.IO) { app.db.workouts().deletePreset(p.id) }; reload() }
     }
-    MeadowBackground {
+    MeadowBackground(critters = listOf(R.drawable.mascot_oblongo_rest, R.drawable.mascot_bola_idle, R.drawable.mascot_fantasma_idle)) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         BackBar("Corrida", onBack)
         PresetChips(presets) { p -> load(p) }
@@ -379,7 +380,7 @@ fun CorridaSetupScreen(onBack: () -> Unit, onGo: () -> Unit) {
             prefs.edit().putString("lastRun", cfgJson().toString()).apply()
             startWorkout(ctx, cfgJson()); onGo()
         }, Modifier.fillMaxWidth(), BtnKind.CINDER, 24.sp, 58.dp)
-        Spacer(Modifier.height(64.dp))
+        Spacer(Modifier.height(104.dp))
     }
     }
 }
