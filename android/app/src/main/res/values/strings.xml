@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GrokRun</string>
+    <string name="channel_name">Treino em andamento</string>
+    <string name="channel_desc">Fase e tempo restante do treino</string>
+</resources>
