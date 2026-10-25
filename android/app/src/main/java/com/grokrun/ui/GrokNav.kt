@@ -5,7 +5,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -31,17 +39,30 @@ private fun NavHostController.tab(route: String) = navigate(route) {
  * Ajustes pela engrenagem, faixa "Corrida em andamento" fora da tela ao vivo.
  */
 @Composable
-fun GrokNav(openLive: Boolean = false) {
+fun GrokNav() {
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route ?: "home"
     val hud by Live.hud.collectAsState()
     val currentId by Live.currentId.collectAsState()
-    val running = currentId != null && Live.running
-    LaunchedEffect(openLive) { if (openLive && Live.running) nav.navigate("live") }
-    Column(Modifier.fillMaxSize().background(Paper).safeDrawingPadding()) {
-        if (running && route != "live" && hud != null) RunningBanner { nav.navigate("live") { launchSingleTop = true } }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+    val active by Live.active.collectAsState()
+    val running = active || (currentId != null && Live.running)
+    // Toque na notificação → tela ao vivo (espera o serviço retomar o treino, se precisou).
+    val openReq by Live.openLiveRequests.collectAsState()
+    var handledReq by rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(openReq, running) {
+        if (openReq > handledReq && running) {
+            handledReq = openReq
+            if (route != "live") nav.navigate("live") { launchSingleTop = true }
+        }
+    }
+    val showBanner = running && route != "live" && route != "home" && hud != null
+    Column(Modifier.fillMaxSize().background(Paper).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))) {
+        if (showBanner) RunningBanner { nav.navigate("live") { launchSingleTop = true } }
+        // Na Pista o cenário sobe por trás da barra de status; nas outras telas o conteúdo começa abaixo dela.
+        val edgeToEdge = route == "home" || route == "mode" || route.startsWith("setup")
+        val top = if (edgeToEdge || showBanner) Modifier else Modifier.statusBarsPadding()
+        Box(Modifier.weight(1f).fillMaxWidth().then(top)) {
             NavHost(nav, startDestination = "home", modifier = Modifier.fillMaxSize()) {
                 composable("home") {
                     HomeScreen(

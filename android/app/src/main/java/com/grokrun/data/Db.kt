@@ -82,6 +82,9 @@ interface WorkoutDao {
     @Insert
     suspend fun insertPoints(points: List<PointEntity>)
 
+    @Query("DELETE FROM points WHERE workoutId = :id")
+    suspend fun deletePoints(id: String)
+
     @Query("DELETE FROM workouts WHERE id = :id")
     suspend fun delete(id: String)
 

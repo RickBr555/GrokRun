@@ -11,6 +11,8 @@ import org.json.JSONObject
 class GrokApplication : Application() {
     lateinit var db: AppDatabase
         private set
+    /** Trabalho que pode passar do fim de uma tela/serviço (ex.: corrigir altitude depois de salvar). */
+    val scope = CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()

@@ -58,6 +58,21 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.inset
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.Text
+import androidx.core.view.WindowCompat
+import com.grokrun.service.Live
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.grokrun.R
@@ -131,16 +146,19 @@ private fun DrawScope.tiled(img: ImageBitmap, topF: Float, hF: Float, offsetPx: 
  * [travelDp] = quantos dp a pista já andou; as outras camadas andam proporcionalmente.
  */
 @Composable
-fun ParallaxScene(travelDp: () -> Float, modifier: Modifier = Modifier) {
+fun ParallaxScene(travelDp: () -> Float, modifier: Modifier = Modifier, topPad: Dp = 0.dp) {
     val layers = rememberSceneLayers()
     Canvas(modifier.clipToBounds()) {
         val d = travelDp() * density
+        // O céu ocupa tudo (inclusive atrás da barra de status e do título); o resto fica abaixo de [topPad].
         tiled(layers.sky, 0f, 1f, d * SKY / TRACK)
-        // Cidade ancorada no chão: a base (0,69) passa da linha onde árvores/calçada ficam opacas
-        // (~0,67) e ainda é estendida até 0,74, então nunca sobra faixa de céu acima da calçada.
-        tiled(layers.town, 0.25f, 0.44f, d * TOWN / TRACK, extendToF = 0.74f)
-        tiled(layers.trees, 0.40f, 0.33f, d * TREES / TRACK)
-        tiled(layers.track, 0.66f, 0.34f, d)
+        inset(0f, topPad.toPx(), 0f, 0f) {
+            // Cidade ancorada no chão: a base (0,69) passa da linha onde árvores/calçada ficam opacas
+            // (~0,67) e ainda é estendida até 0,74, então nunca sobra faixa de céu acima da calçada.
+            tiled(layers.town, 0.25f, 0.44f, d * TOWN / TRACK, extendToF = 0.74f)
+            tiled(layers.trees, 0.40f, 0.33f, d * TREES / TRACK)
+            tiled(layers.track, 0.66f, 0.34f, d)
+        }
     }
 }
 
@@ -154,16 +172,10 @@ fun FloatingRunner(m: Mascot, clock: () -> Float, sceneH: Dp, modifier: Modifier
             val k = (1f - (l / 120f)).coerceIn(0.45f, 1f)
             drawOval(Color(0x501C140C), topLeft = Offset(size.width * (1 - k) / 2, size.height * 0.2f), size = Size(size.width * k, size.height * 0.6f))
         }
-        Image(
-            painterResource(m.run),
-            contentDescription = "${m.label} correndo",
-            modifier = Modifier.size(mh * 1.1f, mh).offset(y = (-14).dp).graphicsLayer {
-                val t = clock()
-                val p = (sin(t * 2 * Math.PI.toFloat() / 0.42f) + 1f) / 2f
-                translationY = -p * mh.toPx() * 0.07f - lift() * density
-                rotationZ = -3f + p * 6f
-                scaleY = 1f - (1f - p) * 0.035f
-            },
+        RunCycle(
+            m, mh,
+            Modifier.offset(y = (-14).dp).graphicsLayer { translationY = -lift() * density },
+            time = clock,
         )
     }
 }
@@ -179,25 +191,46 @@ fun HomeScreen(running: Boolean, onStart: () -> Unit, onGame: () -> Unit, onSett
     val clock = rememberFrameClock()
     val stage = if (t.dark) t.grass else t.ink
     val onStage = if (t.dark) t.ink else t.paper
+    // Céu claro atrás da barra de status: ícones escuros enquanto a Pista estiver aberta.
+    val view = LocalView.current
+    DisposableEffect(view, t) {
+        val window = (view.context as? android.app.Activity)?.window
+        val ctl = window?.let { WindowCompat.getInsetsController(it, view) }
+        ctl?.isAppearanceLightStatusBars = true
+        onDispose { ctl?.isAppearanceLightStatusBars = !t.dark }
+    }
+    val hud by Live.hud.collectAsState()
     Column(Modifier.fillMaxSize().background(t.paper)) {
-        // Barra de cima do desenho: engrenagem à esquerda, GROK RUN no meio.
-        Box(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 16.dp)) {
-            Box(
-                Modifier.align(Alignment.CenterStart).size(44.dp)
-                    .drawBehind { drawCircle(t.ink, size.minDimension / 2, center + Offset(3.dp.toPx(), 3.dp.toPx())) }
-                    .clip(CircleShape).background(t.cream).border(3.dp, t.ink, CircleShape)
-                    .clickable(onClick = onSettings),
-                contentAlignment = Alignment.Center,
-            ) { Icon(GrokIcon.GEAR, t.ink, 26.dp) }
-            DisplayText(stringResource(R.string.home_title), 34.sp, Modifier.align(Alignment.Center))
-        }
         BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-            val h = maxHeight
-            ParallaxScene({ clock() * TRACK }, Modifier.fillMaxSize())
+            // Sem barra colorida: o cenário sobe até o topo da tela e o título fica em cima do céu.
+            val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            val top = statusTop + 64.dp
+            val h = maxHeight - top
+            ParallaxScene({ clock() * TRACK }, Modifier.fillMaxSize(), topPad = top)
+            Box(Modifier.fillMaxWidth().padding(top = statusTop).height(64.dp).padding(horizontal = 16.dp)) {
+                Box(
+                    Modifier.align(Alignment.CenterStart).size(44.dp)
+                        .drawBehind { drawCircle(t.ink, size.minDimension / 2, center + Offset(3.dp.toPx(), 3.dp.toPx())) }
+                        .clip(CircleShape).background(t.cream).border(3.dp, t.ink, CircleShape)
+                        .clickable(onClick = onSettings),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(GrokIcon.GEAR, t.ink, 26.dp) }
+                OutlinedTitle(stringResource(R.string.home_title), 38.sp, Modifier.align(Alignment.Center))
+            }
+            // Com corrida rolando, o bot sobe um pouco para a pílula caber na pista.
+            val lift = if (running) 30.dp else 0.dp
             FloatingRunner(
                 m, clock, h,
-                Modifier.align(Alignment.TopCenter).offset(y = h * 0.905f - (h * 0.44f + 18.dp) + 9.dp),
+                Modifier.align(Alignment.TopCenter).offset(y = top + h * 0.905f - (h * 0.44f + 18.dp) + 9.dp - lift),
             )
+            if (running) {
+                RunningPill(
+                    hud?.elapsedSec ?: 0,
+                    paused = hud?.status == com.grokrun.domain.RunStatus.PAUSED,
+                    onClick = onStart,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 14.dp, vertical = 10.dp),
+                )
+            }
         }
         Box(Modifier.fillMaxWidth().height(3.dp).background(t.ink))
         Column(
@@ -213,6 +246,60 @@ fun HomeScreen(running: Boolean, onStart: () -> Unit, onGame: () -> Unit, onSett
             )
             GrokButton(stringResource(R.string.home_street_game), onGame, Modifier.fillMaxWidth(), BtnKind.CREAM, 24.sp, 58.dp, outline = line)
             Spacer(Modifier.height(2.dp))
+        }
+    }
+}
+
+/** Título por cima do céu: letra branca com contorno de tinta e sombra dura (legível em qualquer nuvem). */
+@Composable
+fun OutlinedTitle(text: String, size: TextUnit, modifier: Modifier = Modifier) {
+    val ink = Color(0xFF1C140C)
+    val base = TextStyle(fontFamily = Display, fontSize = size, letterSpacing = 1.sp)
+    Box(modifier) {
+        Text(text, style = base.copy(color = ink, drawStyle = Stroke(width = 9f, join = StrokeJoin.Round)), modifier = Modifier.offset(3.dp, 3.dp))
+        Text(text, style = base.copy(color = ink, drawStyle = Stroke(width = 9f, join = StrokeJoin.Round)))
+        Text(text, style = base.copy(color = Color.White))
+    }
+}
+
+/** h:mm:ss só depois de 1 hora; antes m:ss (ex.: 49:05). */
+fun formatRunTime(sec: Int): String {
+    val s = sec.coerceAtLeast(0)
+    val h = s / 3600
+    return if (h > 0) "%d:%02d:%02d".format(h, (s % 3600) / 60, s % 60) else "%d:%02d".format(s / 60, s % 60)
+}
+
+/** Pílula "Corrida em andamento • 49:05" debaixo do bot, na pista. Toque = volta para a corrida. */
+@Composable
+fun RunningPill(elapsedSec: Int, paused: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val t = LocalGrokTheme.current
+    val ink = Color(0xFF1C140C)
+    val shape = RoundedCornerShape(50)
+    val pulse = rememberRunTime()
+    Row(
+        modifier.fillMaxWidth().height(50.dp)
+            .drawBehind { drawRoundRect(ink, topLeft = Offset(3.dp.toPx(), 4.dp.toPx()), size = size, cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2)) }
+            .clip(shape).background(t.cinder).border(3.dp, ink, shape)
+            .clickable(onClick = onClick).padding(start = 14.dp, end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Canvas(Modifier.size(12.dp)) {
+            val a = if (paused) 1f else 0.55f + 0.45f * ((sin(pulse.value * 2 * Math.PI.toFloat() / 1.2f) + 1f) / 2f)
+            drawCircle(Color.White.copy(alpha = a))
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "${if (paused) "Corrida pausada" else "Corrida em andamento"} • ${formatRunTime(elapsedSec)}",
+            style = TextStyle(fontFamily = Display, fontSize = 16.sp, color = t.onCinder),
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+        )
+        Row(
+            Modifier.clip(shape).background(t.onCinder).padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            DisplayText("Voltar", 15.sp, color = ink)
+            Spacer(Modifier.width(4.dp))
+            Box(Modifier.size(16.dp).graphicsLayer { rotationZ = 180f }) { Icon(GrokIcon.BACK, ink, 16.dp) }
         }
     }
 }
@@ -310,11 +397,15 @@ fun BottomNav(current: String, onPick: (String) -> Unit) {
 @Composable
 fun RunningBanner(onClick: () -> Unit) {
     val t = LocalGrokTheme.current
+    val hud by Live.hud.collectAsState()
     Row(
-        Modifier.fillMaxWidth().background(t.cinder).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
+        // A faixa fica no topo e pinta também por trás da barra de status.
+        Modifier.fillMaxWidth().background(t.cinder).statusBarsPadding()
+            .clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        DisplayText("Corrida em andamento", 18.sp, Modifier.weight(1f), color = t.onCinder)
+        val sec = hud?.elapsedSec ?: 0
+        DisplayText("Corrida em andamento • ${formatRunTime(sec)}", 18.sp, Modifier.weight(1f), color = t.onCinder)
         DisplayText("Voltar ›", 16.sp, color = t.onCinder)
     }
 }

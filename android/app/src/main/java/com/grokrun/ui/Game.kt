@@ -171,15 +171,23 @@ fun RaceGameScreen(onBack: () -> Unit) {
                 }
             }
             val mh = 118.dp
-            Image(
-                painterResource(m.run), contentDescription = m.label,
-                modifier = Modifier.offset(x = maxWidth * 0.12f, y = ground - mh).size(mh * 0.9f, mh).graphicsLayer {
-                    frame.longValue
-                    val bob = if (sim.y < 2f) (sin(sim.time * 2 * Math.PI.toFloat() / 0.32f) + 1f) / 2f else 0f
-                    translationY = (-sim.y - bob * 6f) * density
-                    rotationZ = if (sim.y > 2f) -8f else -2f + bob * 4f
-                },
-            )
+            Box(
+                Modifier.offset(x = maxWidth * 0.12f, y = ground - mh).size(mh * 0.9f, mh),
+                contentAlignment = Alignment.Center,
+            ) {
+                RunCycle(
+                    m, mh,
+                    Modifier.graphicsLayer {
+                        frame.longValue
+                        translationY = -sim.y * density
+                        rotationZ = if (sim.y > 2f) -8f else 0f
+                    },
+                    time = { frame.longValue; sim.time },
+                    hz = 1.5f,
+                    // no ar: perna da frente encolhida, sem "correr no vento"
+                    frozenFrame = { if (sim.y > 2f) 11 else null },
+                )
+            }
             if (phase != "run") {
                 Column(
                     Modifier.fillMaxSize().background(Color(0xB8F4E7C4)).padding(16.dp),

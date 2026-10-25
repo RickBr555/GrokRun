@@ -205,6 +205,28 @@ class WorkoutClock(val phases: List<PhasePlan>) {
         return events
     }
 
+    /** Estado para sobreviver à morte do processo (ver Session). */
+    fun snapshot(): org.json.JSONObject = org.json.JSONObject()
+        .put("status", status.name)
+        .put("anchor", anchor)
+        .put("pausedAccum", pausedAccum)
+        .put("pauseStarted", pauseStarted ?: -1L)
+        .put("prepareEnds", prepareEnds)
+        .put("fired", org.json.JSONArray(fired.toList()))
+
+    /** Restaura um [snapshot]; [shift] corrige o relógio de boot se o aparelho reiniciou. */
+    fun restore(j: org.json.JSONObject, shift: Long) {
+        status = RunStatus.valueOf(j.getString("status"))
+        anchor = j.getLong("anchor") + shift
+        pausedAccum = j.getLong("pausedAccum")
+        pauseStarted = j.getLong("pauseStarted").takeIf { it >= 0 }?.plus(shift)
+        prepareEnds = j.getLong("prepareEnds") + shift
+        fired.clear()
+        val arr = j.optJSONArray("fired")
+        if (arr != null) for (i in 0 until arr.length()) fired += arr.getString(i)
+        if (status != RunStatus.PREPARE) recompute(anchor)
+    }
+
     fun prepareDigit(now: Long): Int? {
         if (status != RunStatus.PREPARE) return null
         val left = prepareEnds - now

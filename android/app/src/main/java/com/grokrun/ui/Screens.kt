@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -119,10 +120,13 @@ private fun dbApp(): GrokApplication = LocalContext.current.applicationContext a
 @Composable
 fun ModeScreen(onBack: () -> Unit, onPick: (String) -> Unit) {
     val m = MascotPrefs.current
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        BackBar("Modo", onBack)
-        ModeCard("Corrida", "O grupo atravessa junto, no ritmo da faixa.", { onPick("corrida") }) { GroupRunAnimation() }
-        ModeCard("Tiros", "Um só, bem mais rápido, de um lado ao outro.", { onPick("tiros") }) { SprintAnimation(m) }
+    MeadowBackground {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            BackBar("Modo", onBack)
+            ModeCard("Corrida", "O grupo atravessa junto, no ritmo da faixa.", { onPick("corrida") }) { GroupRunAnimation() }
+            ModeCard("Tiros", "Um só, bem mais rápido, de um lado ao outro.", { onPick("tiros") }) { SprintAnimation(m) }
+            Spacer(Modifier.height(72.dp))
+        }
     }
 }
 
@@ -175,13 +179,75 @@ private fun SavePresetRow(onSave: (String) -> Unit) {
     }
 }
 
+private fun presetToast(ctx: Context, p: PresetEntity) =
+    android.widget.Toast.makeText(ctx, "Preset “${p.name}” carregado", android.widget.Toast.LENGTH_SHORT).show()
+
+/** Resumo de uma linha do preset (o que ele carrega). */
+private fun presetSummary(p: PresetEntity): String = try {
+    val j = JSONObject(p.configJson)
+    if (p.mode == "corrida") {
+        "Pace ${formatClock(j.optInt("fast", 360))}–${formatClock(j.optInt("slow", 390))} /km · janela ${j.optInt("window", 20)} s"
+    } else {
+        val cfg = IntervalConfig(
+            j.optInt("warmup", 300), j.optInt("sprint", 60), j.optInt("rest", 60), j.optInt("sprints", 4).coerceAtLeast(1),
+            j.optInt("cycles", 1).coerceAtLeast(1), j.optInt("cycleRest", 0), j.optInt("cooldown", 180),
+        )
+        val cyc = if (cfg.cycles > 1) " · ${cfg.cycles} ciclos" else ""
+        "${cfg.sprintsPerCycle}× ${formatClock(cfg.sprintSec)} / ${formatClock(cfg.restSec)}$cyc · total ${formatClock(totalSeconds(buildIntervalPhases(cfg)))}"
+    }
+} catch (_: Exception) { "" }
+
+/**
+ * Lista de presets (de fábrica + os salvos) que sobe de baixo. Tocar carrega os valores e fecha,
+ * voltando para a montagem do treino.
+ */
 @Composable
-private fun DeletePresetLinks(presets: List<PresetEntity>, onDelete: (PresetEntity) -> Unit) {
-    val custom = presets.filter { !it.id.startsWith("preset-") }
-    if (custom.isEmpty()) return
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        custom.forEach { p ->
-            Text2("Apagar ${p.name}", Modifier.clickable { onDelete(p) })
+private fun PresetsSheet(
+    presets: List<PresetEntity>,
+    onDismiss: () -> Unit,
+    onPick: (PresetEntity) -> Unit,
+    onDelete: (PresetEntity) -> Unit,
+) {
+    val t = LocalGrokTheme.current
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(Modifier.fillMaxSize().clickable(
+            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+            indication = null, onClick = onDismiss,
+        ), contentAlignment = Alignment.BottomCenter) {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 560.dp)
+                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                    .background(t.paper)
+                    .border(3.dp, t.ink, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                    .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) { }
+                    .navigationBarsPadding()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(Modifier.align(Alignment.CenterHorizontally).size(48.dp, 5.dp).clip(RoundedCornerShape(50)).background(t.ink.copy(alpha = 0.3f)))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    DisplayText("Presets", 28.sp, Modifier.weight(1f))
+                    GrokButton("Fechar", onDismiss, kind = BtnKind.CREAM, size = 16.sp, height = 40.dp)
+                }
+                if (presets.isEmpty()) Hint("Nenhum preset ainda.")
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(end = 4.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    presets.forEach { p ->
+                        val custom = !p.id.startsWith("preset-")
+                        Box(Modifier.fillMaxWidth().grokCard().clip(RoundedCornerShape(24.dp)).clickable { onPick(p) }) {
+                            Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    DisplayText(p.name, 20.sp)
+                                    Hint(presetSummary(p) + if (custom) " · seu" else "", alpha = 0.7f, size = 13.sp)
+                                }
+                                if (custom) Text2("Apagar", Modifier.padding(start = 8.dp).clickable { onDelete(p) })
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -218,13 +284,19 @@ fun TirosSetupScreen(onBack: () -> Unit, onGo: () -> Unit) {
         .put("sprints", n).put("cycles", cycles).put("cycleRest", cycleRest).put("cooldown", cool)
     val phases = buildIntervalPhases(IntervalConfig(warmup, sprint, rest, n, cycles, cycleRest, cool))
     val total = totalSeconds(phases)
+    var showPresets by remember { mutableStateOf(false) }
+    fun load(p: PresetEntity) {
+        val j = JSONObject(p.configJson)
+        warmup = j.optInt("warmup", 300); sprint = j.optInt("sprint", 60); rest = j.optInt("rest", 60); n = j.optInt("sprints", 4).coerceAtLeast(1)
+        cycles = j.optInt("cycles", 1).coerceAtLeast(1); cycleRest = j.optInt("cycleRest", 0); cool = j.optInt("cooldown", 180)
+    }
+    if (showPresets) PresetsSheet(presets, { showPresets = false }, { p -> load(p); showPresets = false; presetToast(ctx, p) }) { p ->
+        scope.launch { withContext(Dispatchers.IO) { app.db.workouts().deletePreset(p.id) }; reload() }
+    }
+    MeadowBackground {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         BackBar("Tiros", onBack)
-        PresetChips(presets) { p ->
-            val j = JSONObject(p.configJson)
-            warmup = j.optInt("warmup"); sprint = j.optInt("sprint"); rest = j.optInt("rest"); n = j.optInt("sprints")
-            cycles = j.optInt("cycles"); cycleRest = j.optInt("cycleRest"); cool = j.optInt("cooldown")
-        }
+        PresetChips(presets) { p -> load(p) }
         GrokCard(padding = 12.dp) {
             Column {
                 TimeStepper("Aquecimento", warmup, { warmup = it }, step = 15)
@@ -252,11 +324,13 @@ fun TirosSetupScreen(onBack: () -> Unit, onGo: () -> Unit) {
                 reload()
             }
         }
-        DeletePresetLinks(presets) { p -> scope.launch { withContext(Dispatchers.IO) { app.db.workouts().deletePreset(p.id) }; reload() } }
+        GrokButton("Presets", { showPresets = true }, Modifier.fillMaxWidth(), BtnKind.GOLD, 18.sp, 46.dp)
         GrokButton("Começar tiros", {
             prefs.edit().putString("lastTiros", cfgJson().toString()).apply()
             startWorkout(ctx, cfgJson()); onGo()
         }, Modifier.fillMaxWidth(), BtnKind.CINDER, 24.sp, 58.dp, enabled = sprint > 0)
+        Spacer(Modifier.height(64.dp))
+    }
     }
 }
 
@@ -274,12 +348,18 @@ fun CorridaSetupScreen(onBack: () -> Unit, onGo: () -> Unit) {
     suspend fun reload() { presets = sortedPresets(withContext(Dispatchers.IO) { app.db.workouts().presets() }, "corrida") }
     LaunchedEffect(Unit) { reload() }
     fun cfgJson() = JSONObject().put("mode", "corrida").put("fast", minOf(fast, slow)).put("slow", maxOf(fast, slow)).put("window", window)
+    var showPresets by remember { mutableStateOf(false) }
+    fun load(p: PresetEntity) {
+        val j = JSONObject(p.configJson)
+        fast = j.optInt("fast", 360); slow = j.optInt("slow", 390); window = j.optInt("window", 20)
+    }
+    if (showPresets) PresetsSheet(presets, { showPresets = false }, { p -> load(p); showPresets = false; presetToast(ctx, p) }) { p ->
+        scope.launch { withContext(Dispatchers.IO) { app.db.workouts().deletePreset(p.id) }; reload() }
+    }
+    MeadowBackground {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         BackBar("Corrida", onBack)
-        PresetChips(presets) { p ->
-            val j = JSONObject(p.configJson)
-            fast = j.optInt("fast", 360); slow = j.optInt("slow", 390); window = j.optInt("window", 20)
-        }
+        PresetChips(presets) { p -> load(p) }
         GrokCard {
             Column {
                 TimeStepper("Pace mais rápido", fast, { fast = minOf(it, slow - 5) }, hint = "Abaixo disso, apito agudo", min = 180, max = 720, step = 5)
@@ -294,11 +374,13 @@ fun CorridaSetupScreen(onBack: () -> Unit, onGo: () -> Unit) {
                 reload()
             }
         }
-        DeletePresetLinks(presets) { p -> scope.launch { withContext(Dispatchers.IO) { app.db.workouts().deletePreset(p.id) }; reload() } }
+        GrokButton("Presets", { showPresets = true }, Modifier.fillMaxWidth(), BtnKind.GOLD, 18.sp, 46.dp)
         GrokButton("Começar corrida", {
             prefs.edit().putString("lastRun", cfgJson().toString()).apply()
             startWorkout(ctx, cfgJson()); onGo()
         }, Modifier.fillMaxWidth(), BtnKind.CINDER, 24.sp, 58.dp)
+        Spacer(Modifier.height(64.dp))
+    }
     }
 }
 
@@ -320,10 +402,29 @@ fun LiveScreen(onSaved: (String) -> Unit, onMinimize: () -> Unit) {
     val currentId by Live.currentId.collectAsState()
     val lastSaved by Live.lastSaved.collectAsState()
     val saving by Live.saving.collectAsState()
-    var myId by remember { mutableStateOf<String?>(null) }
+    val active by Live.active.collectAsState()
+    val saveFailed by Live.saveFailed.collectAsState()
+    var myId by rememberSaveable { mutableStateOf<String?>(null) }
     var confirming by remember { mutableStateOf(false) }
+    var stopping by rememberSaveable { mutableStateOf(false) }
+    var stuck by remember { mutableStateOf(false) }
     LaunchedEffect(currentId) { if (currentId != null) myId = currentId }
-    LaunchedEffect(lastSaved, myId) { val s = lastSaved; if (s != null && s == myId) onSaved(s) }
+    // Treino salvo (no fim natural ou depois do "Sim") → resumo.
+    LaunchedEffect(lastSaved, myId, stopping) {
+        val s = lastSaved
+        if (s != null && (s == myId || stopping)) onSaved(s)
+    }
+    // Pediu para finalizar e o serviço encerrou sem salvar nada (sessão perdida): volta para a Pista.
+    LaunchedEffect(stopping, active, saving, currentId, saveFailed) {
+        if (stopping && !active && !saving && currentId == null && lastSaved == null && saveFailed) {
+            android.widget.Toast.makeText(ctx, "Não havia treino para salvar.", android.widget.Toast.LENGTH_SHORT).show()
+            onMinimize()
+        }
+    }
+    // Rede de segurança: se em 10 s nada respondeu, oferece voltar para a Pista.
+    LaunchedEffect(stopping) {
+        if (stopping) { kotlinx.coroutines.delay(10_000); stuck = true }
+    }
     val m = MascotPrefs.current
     val hasLocation = remember {
         ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
@@ -335,6 +436,13 @@ fun LiveScreen(onSaved: (String) -> Unit, onMinimize: () -> Unit) {
     val restPose = h?.phaseKind == PhaseKind.REST || h?.phaseKind == PhaseKind.CYCLE_REST || h?.phaseKind == PhaseKind.COOLDOWN || paused
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.Top) {
+            // Voltar para a Pista: o treino continua rodando (a pílula na Pista traz de volta).
+            Box(
+                Modifier.padding(end = 8.dp, top = 2.dp).size(44.dp).clip(RoundedCornerShape(14.dp))
+                    .background(t.cream).border(3.dp, t.ink, RoundedCornerShape(14.dp))
+                    .clickable(onClick = onMinimize),
+                contentAlignment = Alignment.Center,
+            ) { Icon(GrokIcon.BACK, t.ink, 22.dp) }
             Column(Modifier.weight(1f)) {
                 Hint(if (paused) (if (h?.pauseReason == "auto") "Parado na rua" else "Pausado") else "Agora", alpha = 0.65f)
                 DisplayText(h?.phaseLabel ?: "Preparar", 30.sp)
@@ -385,23 +493,18 @@ fun LiveScreen(onSaved: (String) -> Unit, onMinimize: () -> Unit) {
             Spacer(Modifier.weight(1f))
             if (h?.mode == com.grokrun.domain.Mode.CORRIDA && h.inZoneRatio != null) Body("Na faixa ${formatPct(h.inZoneRatio)}", size = 14.sp)
         }
-        if (saving) Hint("Ajustando elevação…", Modifier.fillMaxWidth(), align = TextAlign.Center)
-        if (confirming) {
-            GrokCard {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    DisplayText("Parar o treino?", 20.sp)
-                    Hint("O que já foi feito será salvo.")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GrokButton("Parar e salvar", { confirming = false; send(ctx, WorkoutService.ACTION_STOP) }, Modifier.weight(1f), BtnKind.CINDER, 18.sp, 46.dp)
-                        GrokButton("Voltar", { confirming = false }, kind = BtnKind.CREAM, size = 18.sp, height = 46.dp)
-                    }
+        if (stopping || saving) {
+            GrokCard(padding = 10.dp) {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    DisplayText("Salvando corrida…", 22.sp, align = TextAlign.Center)
+                    if (stuck) GrokButton("Voltar para a Pista", onMinimize, kind = BtnKind.CREAM, size = 16.sp, height = 42.dp)
                 }
             }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (paused) GrokButton("Retomar", { send(ctx, WorkoutService.ACTION_RESUME) }, Modifier.weight(1f), BtnKind.GOLD, 22.sp, 54.dp)
                 else GrokButton("Pausar", { send(ctx, WorkoutService.ACTION_PAUSE) }, Modifier.weight(1f), BtnKind.CREAM, 22.sp, 54.dp, enabled = !prepare && h != null)
-                GrokButton("Parar", { if (Live.running) confirming = true }, Modifier.weight(1f), BtnKind.INK, 22.sp, 54.dp)
+                GrokButton("Finalizar", { confirming = true }, Modifier.weight(1f), BtnKind.INK, 22.sp, 54.dp)
             }
             if (paused && h?.pauseReason == "auto") GrokButton("Segurar pausa mesmo se eu andar", { send(ctx, WorkoutService.ACTION_HOLD) }, Modifier.fillMaxWidth(), BtnKind.CREAM, 16.sp, 44.dp)
         }
@@ -409,7 +512,26 @@ fun LiveScreen(onSaved: (String) -> Unit, onMinimize: () -> Unit) {
             Text2("Minimizar e continuar correndo", Modifier.clickable(onClick = onMinimize))
         }
         Hint("Sair desta tela não pausa. O relógio segue.", Modifier.fillMaxWidth(), alpha = 0.6f, size = 12.sp, align = TextAlign.Center)
-        if (!Live.running && h == null) Hint("Nenhum treino rodando.")
+        if (!active && !Live.running && h == null && !stopping) Hint("Nenhum treino rodando.")
+    }
+    if (confirming) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { confirming = false }) {
+            GrokCard {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    DisplayText("Finalizar corrida?", 26.sp)
+                    Hint("O que você já correu fica salvo e aparece o resumo.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        GrokButton("Sim", {
+                            confirming = false
+                            stopping = true
+                            if (currentId != null) myId = currentId
+                            send(ctx, WorkoutService.ACTION_STOP)
+                        }, Modifier.weight(1f), BtnKind.CINDER, 20.sp, 50.dp)
+                        GrokButton("Continuar", { confirming = false }, Modifier.weight(1f), BtnKind.CREAM, 20.sp, 50.dp)
+                    }
+                }
+            }
+        }
     }
 }
 

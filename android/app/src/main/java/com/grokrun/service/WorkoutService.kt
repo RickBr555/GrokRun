@@ -53,6 +53,9 @@ import com.grokrun.domain.elevationChange
 import com.grokrun.domain.makeRecord
 import com.grokrun.domain.totalSeconds
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.withTimeoutOrNull
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -112,6 +115,12 @@ object Live {
     val position = MutableStateFlow<LivePos?>(null)
     val route = MutableStateFlow<List<RoutePt>>(emptyList())
     @Volatile var running: Boolean = false
+    /** Observável: tem treino rodando (a Pista mostra a pílula e troca COMEÇAR por VOLTAR À CORRIDA). */
+    val active = MutableStateFlow(false)
+    /** Pedido para abrir a tela ao vivo (toque na notificação). Cada pedido incrementa. */
+    val openLiveRequests = MutableStateFlow(0)
+    /** Último fim de treino que não conseguiu salvar (a tela ao vivo avisa e volta para a Pista). */
+    val saveFailed = MutableStateFlow(false)
     /** id do treino em andamento e do último salvo (a tela ao vivo abre o resumo quando ele chega). */
     val currentId = MutableStateFlow<String?>(null)
     val lastSaved = MutableStateFlow<String?>(null)
@@ -119,7 +128,15 @@ object Live {
 }
 
 class WorkoutService : Service() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // Tudo roda na thread principal (o GPS também chega nela): sem corrida de dados entre o
+    // callback de localização e o fim do treino. Disco e rede vão para Dispatchers.IO.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate +
+            CoroutineExceptionHandler { _, e -> Log.e(TAG, "erro no serviço de treino", e) },
+    )
+    private val io = Dispatchers.IO.limitedParallelism(1)
+    private var flushedPoints = 0
+    private var lastPersist = 0L
     private var loop: Job? = null
     private var wake: PowerManager.WakeLock? = null
     private var clock: WorkoutClock? = null
@@ -225,28 +242,68 @@ class WorkoutService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_PAUSE -> clock?.let {
-                if (it.status == RunStatus.RUNNING) { it.pause(SystemClock.elapsedRealtime()); pauseReason = "manual"; alertKind = null }
+        try {
+            when (intent?.action) {
+                // null = o Android recriou o serviço (START_STICKY); RESTORE = o app abriu e achou treino salvo.
+                null, ACTION_RESTORE -> when {
+                    clock != null -> goForegroundSafe(Live.hud.value?.phaseLabel ?: "Treino")
+                    finished.get() -> { bailOut(); return START_NOT_STICKY }
+                    !restore() -> { bailOut(); return START_NOT_STICKY }
+                }
+                ACTION_PAUSE -> { ensureRestored(); clock?.let {
+                    if (it.status == RunStatus.RUNNING) { it.pause(SystemClock.elapsedRealtime()); pauseReason = "manual"; alertKind = null }
+                } }
+                ACTION_RESUME -> { ensureRestored(); clock?.let {
+                    it.resume(SystemClock.elapsedRealtime()); pauseReason = null; stillSince = null; moveSince = null
+                    movedAt = SystemClock.elapsedRealtime()
+                } }
+                // "Segurar pausa mesmo se eu andar": a pausa automática vira manual.
+                ACTION_HOLD -> if (pauseReason == "auto") pauseReason = "manual"
+                ACTION_STOP -> {
+                    ensureRestored()
+                    if (clock == null) {
+                        // Nada para salvar (sessão perdida): só encerra, sem deixar a tela presa.
+                        Session.clear(this)
+                        Live.running = false; Live.active.value = false; Live.currentId.value = null
+                        Live.saving.value = false; Live.saveFailed.value = true
+                        bailOut()
+                        return START_NOT_STICKY
+                    }
+                    scope.launch { finish(false) }
+                }
+                ACTION_START -> when {
+                    clock != null -> goForegroundSafe(Live.hud.value?.phaseLabel ?: "Treino") // já tem um: não começa outro
+                    Session.exists(this) && restore() -> Unit
+                    else -> begin(intent)
+                }
             }
-            ACTION_RESUME -> clock?.let {
-                it.resume(SystemClock.elapsedRealtime()); pauseReason = null; stillSince = null; moveSince = null
-                movedAt = SystemClock.elapsedRealtime()
-            }
-            // "Segurar pausa mesmo se eu andar": a pausa automática vira manual.
-            ACTION_HOLD -> if (pauseReason == "auto") pauseReason = "manual"
-            ACTION_STOP -> {
-                scope.launch { finish(false) }
-            }
-            ACTION_START -> if (!Live.running) begin(intent)
+            if (clock == null && !finished.get()) { bailOut(); return START_NOT_STICKY }
+            if (intent?.action != ACTION_STOP) persist(force = true)
+            refreshHud()
+        } catch (e: Exception) {
+            Log.e(TAG, "onStartCommand", e)
         }
-        refreshHud()
         return START_STICKY
     }
 
-    private fun begin(intent: Intent) {
-        configJson = intent.getStringExtra(EXTRA_CONFIG) ?: return
-        val json = JSONObject(configJson)
+    /** Ações vindas da notificação depois que o processo morreu: primeiro retoma o treino salvo. */
+    private fun ensureRestored() {
+        if (clock == null && !finished.get()) restore()
+    }
+
+    /** Em segundo plano (serviço recriado pelo sistema) o Android 12+ pode negar o foreground: segue mesmo assim. */
+    private fun goForegroundSafe(text: String) {
+        try { goForeground(text) } catch (e: Exception) { Log.w(TAG, "foreground negado agora; tenta de novo ao abrir o app", e) }
+    }
+
+    /** Sai sem treino (o Android exige startForeground depois de startForegroundService). */
+    private fun bailOut() {
+        try { goForeground("GrokRun") } catch (_: Exception) { }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private fun parseConfig(json: JSONObject): List<PhasePlan> {
         mode = if (json.optString("mode") == "corrida") Mode.CORRIDA else Mode.TIROS
         mascot = when (json.optString("mascot")) {
             "triangulo" -> MascotId.TRIANGULO
@@ -256,47 +313,133 @@ class WorkoutService : Service() {
             "quadrado" -> MascotId.QUADRADO
             else -> MascotId.BOLA
         }
-        val phases: List<PhasePlan> = if (mode == Mode.TIROS) {
+        return if (mode == Mode.TIROS) {
             interval = IntervalConfig(
-                json.getInt("warmup"), json.getInt("sprint"), json.getInt("rest"),
-                json.getInt("sprints"), json.getInt("cycles"), json.getInt("cycleRest"),
-                json.getInt("cooldown"),
+                json.optInt("warmup", 300), json.optInt("sprint", 60), json.optInt("rest", 60),
+                json.optInt("sprints", 4).coerceAtLeast(1), json.optInt("cycles", 1).coerceAtLeast(1),
+                json.optInt("cycleRest", 0), json.optInt("cooldown", 180),
             )
             buildIntervalPhases(interval!!)
         } else {
-            run = RunConfig(json.getInt("fast"), json.getInt("slow"), json.getInt("window"))
+            run = RunConfig(json.optInt("fast", 360), json.optInt("slow", 390), json.optInt("window", 20))
             listOf(buildRunPhase())
         }
+    }
+
+    private fun begin(intent: Intent) {
+        configJson = intent.getStringExtra(EXTRA_CONFIG) ?: return
+        val phases = parseConfig(JSONObject(configJson))
         id = UUID.randomUUID().toString()
         startedAt = System.currentTimeMillis()
         Live.position.value = null
         Live.route.value = emptyList()
+        Session.clear(this)
+        flushedPoints = 0
         clock = WorkoutClock(phases).also { it.start(SystemClock.elapsedRealtime()) }
+        movedAt = SystemClock.elapsedRealtime()
+        goLive("Preparar")
+    }
+
+    /** Retoma o treino salvo em [Session]. */
+    private fun restore(): Boolean {
+        val j = Session.load(this) ?: return false
+        return try {
+            configJson = j.getString("config")
+            val phases = parseConfig(JSONObject(configJson))
+            id = j.getString("id")
+            startedAt = j.getLong("startedAt")
+            val nowE = SystemClock.elapsedRealtime()
+            val expected = j.getLong("savedElapsed") + (System.currentTimeMillis() - j.getLong("savedWall"))
+            // Relógio de boot recomeça do zero quando o aparelho reinicia: desloca tudo.
+            val shift = if (kotlin.math.abs(nowE - expected) > 10_000L) nowE - expected else 0L
+            clock = WorkoutClock(phases).also { it.restore(j.getJSONObject("clock"), shift) }
+            dist = j.optDouble("dist", 0.0)
+            while (splits.length() > 0) splits.remove(0)
+            val sp = JSONArray(j.optString("splits", "[]"))
+            for (i in 0 until sp.length()) splits.put(sp.get(i))
+            nextSplitKm = j.optInt("nextSplitKm", 1)
+            splitElapsedSec = j.optDouble("splitElapsedSec", 0.0)
+            pauseReason = j.optString("pauseReason", "").ifEmpty { null }
+            inZone = j.optLong("inZone", 0L)
+            sampled = j.optLong("sampled", 0L)
+            points.clear()
+            points += Session.readPoints(this)
+            flushedPoints = points.size
+            Live.route.value = points.map { RoutePt(it.lat, it.lon) }
+            Live.position.value = null
+            movedAt = nowE
+            goLive(Live.hud.value?.phaseLabel ?: "Treino")
+            Log.i(TAG, "treino $id retomado com ${points.size} pontos")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "não deu para retomar o treino salvo", e)
+            Session.clear(this)
+            false
+        }
+    }
+
+    private fun goLive(text: String) {
         Live.running = true
+        Live.active.value = true
+        Live.saveFailed.value = false
         Live.currentId.value = id
         Live.lastSaved.value = null
-        movedAt = SystemClock.elapsedRealtime()
-        goForeground("Preparar")
+        goForegroundSafe(text)
         acquireWake()
         startAudio()
         startGps()
         startBaro()
         lastTickWall = System.currentTimeMillis()
+        loop?.cancel()
         loop = scope.launch {
             while (Live.running) {
                 val now = SystemClock.elapsedRealtime()
                 val c = clock ?: break
-                val events = c.tick(now)
-                handle(events)
-                sampleZone()
-                refreshHud()
+                try {
+                    val events = c.tick(now)
+                    handle(events)
+                    sampleZone()
+                    refreshHud()
+                    persist()
+                } catch (e: Exception) {
+                    Log.e(TAG, "tick", e)
+                }
                 if (c.status == RunStatus.DONE) {
-                    finish(true)
+                    // Fora do laço: o fim não pode ser cancelado junto com ele.
+                    scope.launch { finish(true) }
                     break
                 }
                 delay(200)
             }
         }
+    }
+
+    /** Grava o estado a cada ~5 s (e na hora em pausar/retomar). */
+    private fun persist(force: Boolean = false, sync: Boolean = false) {
+        val c = clock ?: return
+        if (finished.get()) return
+        val nowE = SystemClock.elapsedRealtime()
+        if (!force && nowE - lastPersist < 5_000L) return
+        lastPersist = nowE
+        val state = JSONObject()
+            .put("config", configJson).put("id", id).put("startedAt", startedAt)
+            .put("savedElapsed", nowE).put("savedWall", System.currentTimeMillis())
+            .put("clock", c.snapshot())
+            .put("dist", dist).put("splits", splits.toString())
+            .put("nextSplitKm", nextSplitKm).put("splitElapsedSec", splitElapsedSec)
+            .put("pauseReason", pauseReason ?: "")
+            .put("inZone", inZone).put("sampled", sampled)
+        val fresh = if (points.size > flushedPoints) ArrayList(points.subList(flushedPoints, points.size)) else emptyList()
+        flushedPoints = points.size
+        val ctx = applicationContext
+        val work = {
+            try {
+                Session.appendPoints(ctx, fresh)
+                if (!finished.get()) Session.save(ctx, state)
+            } catch (e: Exception) { Log.e(TAG, "persist", e) }
+        }
+        if (sync) work() else scope.launch(io) { work() }
+        acquireWake() // renova o wakelock enquanto o treino durar
     }
 
     private fun sampleZone() {
@@ -355,56 +498,103 @@ class WorkoutService : Service() {
         }
     }
 
+    /**
+     * Fim do treino. Sempre termina: salva no Room (sem esperar a rede), avisa a tela
+     * (lastSaved → resumo), derruba a notificação e para o serviço. A correção de altitude
+     * pela internet roda depois, em segundo plano, e só atualiza o treino já salvo.
+     */
     private suspend fun finish(natural: Boolean) {
         if (!finished.compareAndSet(false, true)) return
-        Live.running = false
-        val c = clock ?: return
-        val now = SystemClock.elapsedRealtime()
-        if (c.status != RunStatus.DONE) {
-            closeUpTo(c, c.indexAt(now), c.elapsed(now), partial = true)
-        } else {
-            closeUpTo(c, c.phases.size, c.elapsed(now), partial = false)
-        }
         Live.saving.value = true
-        if (!natural) whistle(WhistleMoment.DONE)
-        stopGps()
-        val corrected = correctElevation()
-        val (gain, loss) = elevationChange(corrected.map { it.alt })
-        val estimated = corrected.firstOrNull()?.altSource == "estimated"
-        val source = corrected.firstOrNull()?.altSource ?: "estimated"
-        val entity = WorkoutEntity(
-            id = id,
-            startedAt = startedAt,
-            mode = if (mode == Mode.TIROS) "tiros" else "corrida",
-            mascot = mascot.name.lowercase(),
-            configJson = configJson,
-            distanceM = dist,
-            durationSec = c.elapsed(now) / 1000.0,
-            elevGain = gain,
-            elevLoss = loss,
-            elevEstimated = estimated,
-            elevSource = source,
-            inZoneRatio = if (sampled > 0) inZone.toDouble() / sampled else null,
-            phasesJson = recordsToJson(),
-            splitsJson = splits.toString(),
-        )
-        val db = (application as GrokApplication).db
-        withContext(NonCancellable) {
-            db.workouts().insert(entity)
-            db.workouts().insertPoints(corrected.map {
-                PointEntity(
-                    workoutId = id, lat = it.lat, lon = it.lon, t = it.t, acc = it.acc,
-                    alt = it.alt, altSource = it.altSource, phase = it.phase.name,
-                    phaseIndex = it.phaseIndex, distM = it.distM,
-                )
-            })
+        Live.running = false
+        loop?.cancel()
+        var savedId: String? = null
+        var forDem: List<TrackPoint>? = null
+        var entity: WorkoutEntity? = null
+        try { stopGps() } catch (_: Exception) { }
+        val c = clock
+        if (c != null) {
+            val now = SystemClock.elapsedRealtime()
+            try {
+                if (c.status != RunStatus.DONE) closeUpTo(c, c.indexAt(now), c.elapsed(now), partial = true)
+                else closeUpTo(c, c.phases.size, c.elapsed(now), partial = false)
+            } catch (e: Exception) { Log.e(TAG, "closeUpTo", e) }
+            if (!natural) try { whistle(WhistleMoment.DONE) } catch (_: Exception) { }
+            val pts = ArrayList(points)
+            val baro = pts.any { it.altSource == "baro" }
+            val saved = if (baro) pts else pts.map { it.copy(altSource = "estimated") }
+            val (gain, loss) = try { elevationChange(saved.map { it.alt }) } catch (_: Exception) { 0.0 to 0.0 }
+            entity = WorkoutEntity(
+                id = id,
+                startedAt = startedAt,
+                mode = if (mode == Mode.TIROS) "tiros" else "corrida",
+                mascot = mascot.name.lowercase(),
+                configJson = configJson,
+                distanceM = dist.takeIf { it.isFinite() } ?: 0.0,
+                durationSec = c.elapsed(now) / 1000.0,
+                elevGain = gain,
+                elevLoss = loss,
+                elevEstimated = !baro,
+                elevSource = if (baro) "baro" else "estimated",
+                inZoneRatio = if (sampled > 0) inZone.toDouble() / sampled else null,
+                phasesJson = try { recordsToJson() } catch (_: Exception) { "[]" },
+                splitsJson = splits.toString(),
+            )
+            val db = (application as GrokApplication).db
+            try {
+                withContext(Dispatchers.IO + NonCancellable) {
+                    db.workouts().insert(entity)
+                    if (saved.isNotEmpty()) db.workouts().insertPoints(saved.map { it.toEntity(id) })
+                }
+                savedId = id
+                if (!baro && pts.isNotEmpty()) forDem = pts
+            } catch (e: Exception) {
+                Log.e(TAG, "salvar treino", e)
+                // Último recurso: pelo menos o resumo (sem percurso).
+                try {
+                    withContext(Dispatchers.IO + NonCancellable) { db.workouts().insert(entity) }
+                    savedId = id
+                } catch (e2: Exception) { Log.e(TAG, "salvar resumo", e2) }
+            }
         }
+        withContext(io + NonCancellable) { try { Session.clear(applicationContext) } catch (_: Exception) { } }
+        Live.active.value = false
+        Live.saveFailed.value = savedId == null
         Live.saving.value = false
-        Live.lastSaved.value = id
+        Live.lastSaved.value = savedId
         Live.currentId.value = null
         releaseWake()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+        val demPts = forDem
+        val e = entity
+        if (demPts != null && e != null) {
+            val app = application as GrokApplication
+            app.scope.launch { refineElevation(app, e, demPts) }
+        }
+    }
+
+    private fun TrackPoint.toEntity(workoutId: String) = PointEntity(
+        workoutId = workoutId, lat = lat, lon = lon, t = t, acc = acc,
+        alt = alt, altSource = altSource, phase = phase.name,
+        phaseIndex = phaseIndex, distM = distM,
+    )
+
+    /** Altitude do relevo (open-meteo) depois de salvo; com limite de tempo e sem travar nada. */
+    private suspend fun refineElevation(app: GrokApplication, e: WorkoutEntity, pts: List<TrackPoint>) {
+        val elev = withTimeoutOrNull(90_000L) {
+            withContext(Dispatchers.IO) { try { fetchElevations(pts) } catch (_: Exception) { null } }
+        } ?: return
+        if (elev.size != pts.size) return
+        val fixed = pts.mapIndexed { i, p -> p.copy(alt = elev[i], altSource = "dem") }
+        val (gain, loss) = elevationChange(fixed.map { it.alt })
+        try {
+            val dao = app.db.workouts()
+            if (dao.one(e.id) == null) return // apagado nesse meio tempo
+            dao.insert(e.copy(elevGain = gain, elevLoss = loss, elevEstimated = false, elevSource = "dem"))
+            dao.deletePoints(e.id)
+            dao.insertPoints(fixed.map { it.toEntity(e.id) })
+        } catch (ex: Exception) { Log.e(TAG, "atualizar altitude", ex) }
     }
 
     private fun closeUpTo(c: WorkoutClock, idx: Int, elapsed: Long, partial: Boolean) {
@@ -434,18 +624,6 @@ class WorkoutService : Service() {
             })
         }
         return arr.toString()
-    }
-
-    private fun correctElevation(): List<TrackPoint> {
-        if (points.isEmpty()) return points
-        if (points.any { it.altSource == "baro" }) return points
-        return try {
-            val elev = fetchElevations(points)
-            if (elev == null) points.map { it.copy(altSource = "estimated") }
-            else points.mapIndexed { i, p -> p.copy(alt = elev[i], altSource = "dem") }
-        } catch (_: Exception) {
-            points.map { it.copy(altSource = "estimated") }
-        }
     }
 
     private fun fetchElevations(src: List<TrackPoint>): List<Double>? {
@@ -500,7 +678,8 @@ class WorkoutService : Service() {
             inZoneRatio = if (sampled > 0) inZone.toDouble() / sampled else null,
         )
         val label = Live.hud.value?.phaseLabel ?: "Treino"
-        val time = remain?.let { "%d:%02d".format(it / 60, it % 60) } ?: ""
+        val time = remain?.let { "%d:%02d".format(it / 60, it % 60) }
+            ?: if (c.status == RunStatus.PREPARE) "" else com.grokrun.ui.formatRunTime((c.elapsed(now) / 1000).toInt())
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIF_ID, buildNotification("$label $time"))
     }
@@ -675,8 +854,11 @@ class WorkoutService : Service() {
 
     private fun buildNotification(text: String): Notification {
         val open = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE,
+            this, 1,
+            Intent(this, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_OPEN_LIVE, true)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val paused = clock?.status == RunStatus.PAUSED
         val toggle = pending(if (paused) ACTION_RESUME else ACTION_PAUSE)
@@ -704,7 +886,14 @@ class WorkoutService : Service() {
         nm.createNotificationChannel(ch)
     }
 
+    /** Tirar o app dos recentes NÃO para o treino (stopWithTask=false); só garante o estado salvo. */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        persist(force = true, sync = true)
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        if (!finished.get()) persist(force = true, sync = true)
         loop?.cancel()
         scope.cancel()
         releaseWake()
@@ -719,9 +908,21 @@ class WorkoutService : Service() {
         const val ACTION_RESUME = "com.grokrun.RESUME"
         const val ACTION_STOP = "com.grokrun.STOP"
         const val ACTION_HOLD = "com.grokrun.HOLD"
+        const val ACTION_RESTORE = "com.grokrun.RESTORE"
+        private const val TAG = "GrokRun"
         const val EXTRA_CONFIG = "config"
 
         fun startIntent(context: Context, config: String): Intent =
             Intent(context, WorkoutService::class.java).setAction(ACTION_START).putExtra(EXTRA_CONFIG, config)
+
+        /** Chamado ao abrir o app: se tem treino salvo e o serviço não está rodando, retoma. */
+        fun resumeIfNeeded(context: Context) {
+            if (!Session.exists(context)) return
+            try {
+                context.startForegroundService(Intent(context, WorkoutService::class.java).setAction(ACTION_RESTORE))
+            } catch (e: Exception) {
+                Log.e(TAG, "retomar treino", e)
+            }
+        }
     }
 }

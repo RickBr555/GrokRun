@@ -49,6 +49,9 @@ class MainActivity : ComponentActivity() {
         val missing = perms.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isNotEmpty()) askPerms.launch(missing.toTypedArray())
         val skipSplash = savedInstanceState != null
+        // Treino salvo e serviço parado (o sistema matou o processo)? Retoma agora.
+        com.grokrun.service.WorkoutService.resumeIfNeeded(this)
+        handleOpenLive(intent)
         setContent {
             var splash by rememberSaveable { mutableStateOf(!skipSplash) }
             LaunchedEffect(Unit) {
@@ -62,10 +65,28 @@ class MainActivity : ComponentActivity() {
                         DisplayText("GROK RUN", 44.sp, color = Color.White)
                     }
                 } else {
-                    GrokRunTheme(theme) { GrokNav(openLive = com.grokrun.service.Live.running) }
+                    GrokRunTheme(theme) { GrokNav() }
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleOpenLive(intent)
+    }
+
+    /** Toque na notificação do treino: abre a tela ao vivo. */
+    private fun handleOpenLive(intent: android.content.Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_LIVE, false) == true) {
+            intent.removeExtra(EXTRA_OPEN_LIVE)
+            com.grokrun.service.Live.openLiveRequests.value += 1
+        }
+    }
+
+    companion object {
+        const val EXTRA_OPEN_LIVE = "open_live"
     }
 
     /** Ícones da barra de status/navegação conforme o tema (preto no splash). */
@@ -73,7 +94,11 @@ class MainActivity : ComponentActivity() {
         val t = ThemePrefs.current
         val bar = if (splash) Color.Black else t.paper
         val style = if (splash || t.dark) SystemBarStyle.dark(bar.toArgb()) else SystemBarStyle.light(bar.toArgb(), bar.toArgb())
-        enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+        // Barra de status transparente: na Pista o céu do cenário sobe por trás dela;
+        // nas outras telas o fundo do app (paper) aparece ali.
+        val clear = android.graphics.Color.TRANSPARENT
+        val status = if (splash || t.dark) SystemBarStyle.dark(clear) else SystemBarStyle.light(clear, clear)
+        enableEdgeToEdge(statusBarStyle = status, navigationBarStyle = style)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(bar.toArgb()))
     }
 }

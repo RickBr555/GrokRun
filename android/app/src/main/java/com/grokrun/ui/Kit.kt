@@ -236,7 +236,7 @@ fun PhaseBar(parts: List<Pair<PhaseKind, Int>>, modifier: Modifier = Modifier) {
 }
 
 // ---------- Ícones (traço estilo lucide, desenhados à mão para não depender de pacote de ícones) ----------
-enum class GrokIcon { FLAG, HISTORY, TRENDING, GEAR, VOLUME, CROSSHAIR }
+enum class GrokIcon { FLAG, HISTORY, TRENDING, GEAR, VOLUME, CROSSHAIR, BACK, LIST }
 
 @Composable
 fun Icon(icon: GrokIcon, color: Color, size: Dp = 20.dp) {
@@ -286,6 +286,16 @@ fun DrawScope.drawGrokIcon(icon: GrokIcon, color: Color) {
             drawPath(path, color, style = st)
             drawArc(color, -50f, 100f, false, topLeft = p(11f, 7f), size = Size(10f * s, 10f * s), style = st)
             drawArc(color, -50f, 100f, false, topLeft = p(7f, 3f), size = Size(18f * s, 18f * s), style = st)
+        }
+        GrokIcon.BACK -> {
+            line(20f to 12f, 4f to 12f)
+            line(11f to 5f, 4f to 12f, 11f to 19f)
+        }
+        GrokIcon.LIST -> {
+            line(8f to 6f, 21f to 6f); line(8f to 12f, 21f to 12f); line(8f to 18f, 21f to 18f)
+            drawCircle(color, radius = 1.4f * s, center = p(3.5f, 6f))
+            drawCircle(color, radius = 1.4f * s, center = p(3.5f, 12f))
+            drawCircle(color, radius = 1.4f * s, center = p(3.5f, 18f))
         }
         GrokIcon.CROSSHAIR -> {
             drawCircle(color, radius = 8f * s, center = p(12f, 12f), style = st)

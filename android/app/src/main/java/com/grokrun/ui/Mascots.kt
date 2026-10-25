@@ -20,6 +20,19 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.floor
+import kotlin.math.roundToInt
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,20 +79,84 @@ object MascotPrefs {
     }
 }
 
-/** Sprite de corrida com balanço vertical e leve inclinação, estilo rubber hose. */
+/** Folha 4×4 com o ciclo de corrida (16 quadros) de cada mascote, gerada a partir dos desenhos do Ricardo. */
+val Mascot.runSheet: Int
+    get() = when (this) {
+        Mascot.BOLA -> R.drawable.runsheet_bola
+        Mascot.TRIANGULO -> R.drawable.runsheet_triangulo
+        Mascot.HEXAGONO -> R.drawable.runsheet_hexagono
+        Mascot.FANTASMA -> R.drawable.runsheet_fantasma
+        Mascot.OBLONGO -> R.drawable.runsheet_oblongo
+        Mascot.QUADRADO -> R.drawable.runsheet_quadrado
+    }
+
+/** A mesma folha em tamanho pequeno (para mascotes de até ~120 dp). */
+val Mascot.runSheetSmall: Int
+    get() = when (this) {
+        Mascot.BOLA -> R.drawable.runsheet_bola_s
+        Mascot.TRIANGULO -> R.drawable.runsheet_triangulo_s
+        Mascot.HEXAGONO -> R.drawable.runsheet_hexagono_s
+        Mascot.FANTASMA -> R.drawable.runsheet_fantasma_s
+        Mascot.OBLONGO -> R.drawable.runsheet_oblongo_s
+        Mascot.QUADRADO -> R.drawable.runsheet_quadrado_s
+    }
+
+const val RUN_FRAMES = 16
+/** 1,3 ciclo por segundo = 2,6 passadas por segundo. */
+const val RUN_HZ = 1.3f
+/** O quadro tem 600×540 no espaço do sprite antigo (512 px de altura), com o boneco centralizado. */
+private const val FRAME_W = 600f / 512f
+private const val FRAME_H = 540f / 512f
+
+/** Relógio próprio (segundos) para quem não tem um. Só lê o estado no desenho: não recompõe a cada quadro. */
+@Composable
+fun rememberRunTime(): State<Float> {
+    val s = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        val start = withFrameNanos { it }
+        while (true) withFrameNanos { s.floatValue = (it - start) / 1_000_000_000f }
+    }
+    return s
+}
+
+/**
+ * Ciclo de corrida de verdade: braços e pernas rubber hose balançando em fase oposta,
+ * quique do corpo e amasso na pisada (já desenhados nos quadros). [height] é a altura do
+ * sprite antigo; o quadro sai um pouco maior e centralizado no mesmo lugar.
+ */
+@Composable
+fun RunCycle(
+    m: Mascot,
+    height: Dp,
+    modifier: Modifier = Modifier,
+    small: Boolean = height < 130.dp,
+    time: (() -> Float)? = null,
+    hz: Float = RUN_HZ,
+    frozenFrame: (() -> Int?)? = null,
+) {
+    val img = ImageBitmap.imageResource(if (small) m.runSheetSmall else m.runSheet)
+    val own = if (time == null) rememberRunTime() else null
+    val fw = img.width / 4
+    val fh = img.height / 4
+    Canvas(modifier.requiredSize(height * FRAME_W, height * FRAME_H)) {
+        val t = time?.invoke() ?: own!!.value
+        val f = frozenFrame?.invoke() ?: floor(t * hz * RUN_FRAMES).toInt().mod(RUN_FRAMES)
+        drawImage(
+            img,
+            srcOffset = IntOffset((f % 4) * fw, (f / 4) * fh),
+            srcSize = IntSize(fw, fh),
+            dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+            filterQuality = FilterQuality.Medium,
+        )
+    }
+}
+
+/** Mascote correndo (ciclo completo). [periodMs] antigo vira velocidade: menor = mais rápido. */
 @Composable
 fun RunningMascot(m: Mascot, size: Dp, modifier: Modifier = Modifier, periodMs: Int = 420) {
-    val t = rememberInfiniteTransition(label = "run")
-    val p by t.animateFloat(0f, 1f, infiniteRepeatable(tween(periodMs, easing = LinearEasing), RepeatMode.Reverse), label = "bob")
-    Image(
-        painterResource(m.run),
-        contentDescription = "${m.label} correndo",
-        modifier = modifier.size(size).graphicsLayer {
-            translationY = -p * size.toPx() * 0.08f
-            rotationZ = -4f + p * 8f
-            scaleY = 1f - (1f - p) * 0.04f
-        },
-    )
+    Box(modifier.size(size), contentAlignment = Alignment.Center) {
+        RunCycle(m, size, hz = RUN_HZ * 420f / periodMs)
+    }
 }
 
 /** Raia de pista: fundo terracota com linhas brancas. */
