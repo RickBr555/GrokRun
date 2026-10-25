@@ -36,6 +36,11 @@ import { RaceGame } from "./RaceGame";
 import { BarMini, ElevationChart, PaceChart } from "./Charts";
 import { MapView } from "./MapView";
 import { useWorkout, type Hud } from "./useWorkout";
+import { Home, ModePick, NavButton } from "./home-screen";
+import { IntervalSetup, RunSetup } from "./setup-screen";
+import { Live } from "./live-screen";
+import { Summary, Activities, Detail } from "./after-screen";
+import { Evolution, Perms } from "./more-screen";
 
 type Screen =
   | { name: "home" }
@@ -50,21 +55,6 @@ type Screen =
   | { name: "perms" };
 
 type Engine = { key: string; mode: WorkoutMode; initial: Session | null };
-
-const THEMES: { id: ThemeId; label: string; hint: string }[] = [
-  { id: "amarelo", label: "Amarelo", hint: "pastel" },
-  { id: "laranja", label: "Laranja", hint: "quente" },
-  { id: "verde", label: "Verde", hint: "da pista" },
-  { id: "azul", label: "Azul", hint: "noite" },
-];
-
-const WHISTLE_MOMENTS: { key: keyof WhistleMap; label: string; hint: string }[] = [
-  { key: "start", label: "Começa a corrida", hint: "aquecimento ou largada" },
-  { key: "sprint", label: "Começa o tiro", hint: "" },
-  { key: "rest", label: "Descanso entre tiros", hint: "" },
-  { key: "finalRest", label: "Descanso final", hint: "fim das repetições" },
-  { key: "done", label: "Final", hint: "treino encerrado" },
-];
 
 function useNightOn(mode: NightMode): boolean {
   const [dark, setDark] = useState(false);
@@ -126,7 +116,7 @@ export function GrokApp() {
     return (
       <div className="app-frame items-center justify-center gap-3 px-6 text-center">
         <p className="font-display text-5xl">GrokRun</p>
-        <p className="text-ink/70">Abrindo a pista\u2026</p>
+        <p className="text-ink/70">Abrindo a pista…</p>
       </div>
     );
   }
@@ -152,15 +142,197 @@ export function GrokApp() {
           <p className="font-display text-3xl leading-none tracking-wide">GrokRun</p>
           <p className="text-sm text-ink/65">tiros, pace e percurso</p>
         </div>
-        <button type="button" className="btn btn-cream px-3 py-2 text-sm" onClick={() => go({ name: "perms" })}>
+        <button
+          type="button"
+          className="btn btn-cream px-3 py-2 text-sm"
+          onClick={() => go({ name: "perms" })}
+        >
           Ajustes
         </button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {screen.name === "home" && (
-          <Home mascot={store.mascot} name={store.runnerName} profileReady={store.profileReady} running={engine != null} onSaveProfile={(name, id) => patch({ ...store, runnerName: name.trim() || "Grok", mascot: id, profileReady: true })} onStart={() => { if (engine) go({ name: "live", mode: engine.mode }); else go({ name: "mode" }); }} onPlay={() => go({ name: "game" })} />
+          <Home
+            mascot={store.mascot}
+            name={store.runnerName}
+            profileReady={store.profileReady}
+            running={engine != null}
+            onSaveProfile={(name, id) =>
+              patch({ ...store, runnerName: name.trim() || "Grok", mascot: id, profileReady: true })
+            }
+            onStart={() => {
+              if (engine) go({ name: "live", mode: engine.mode });
+              else go({ name: "mode" });
+            }}
+            onPlay={() => go({ name: "game" })}
+          />
+        )}
+        {screen.name === "game" && <RaceGame id={store.mascot} onBack={() => go({ name: "home" })} />}
+        {screen.name === "mode" && (
+          <ModePick
+            mascot={store.mascot}
+            onBack={() => go({ name: "home" })}
+            onPick={(mode) => go({ name: "setup", mode })}
+          />
+        )}
+        {screen.name === "setup" && screen.mode === "tiros" && (
+          <IntervalSetup
+            cfg={intervalCfg}
+            presets={store.presets}
+            gpsMode={gpsMode}
+            onGps={setGpsMode}
+            onChange={setIntervalCfg}
+            onBack={() => go({ name: "mode" })}
+            onSavePreset={(name) =>
+              patch({
+                ...store,
+                presets: [
+                  { id: crypto.randomUUID(), name, mode: "tiros", interval: { ...intervalCfg } },
+                  ...store.presets,
+                ],
+              })
+            }
+            onDeletePreset={(id) =>
+              patch({ ...store, presets: store.presets.filter((p) => p.id !== id) })
+            }
+            onUsePreset={(p) => p.interval && setIntervalCfg(p.interval)}
+            onStart={() => begin("tiros")}
+          />
+        )}
+        {screen.name === "setup" && screen.mode === "corrida" && (
+          <RunSetup
+            cfg={runCfg}
+            presets={store.presets}
+            gpsMode={gpsMode}
+            onGps={setGpsMode}
+            onChange={setRunCfg}
+            onBack={() => go({ name: "mode" })}
+            onSavePreset={(name) =>
+              patch({
+                ...store,
+                presets: [
+                  { id: crypto.randomUUID(), name, mode: "corrida", run: { ...runCfg } },
+                  ...store.presets,
+                ],
+              })
+            }
+            onDeletePreset={(id) =>
+              patch({ ...store, presets: store.presets.filter((p) => p.id !== id) })
+            }
+            onUsePreset={(p) => p.run && setRunCfg(p.run)}
+            onStart={() => begin("corrida")}
+          />
+        )}
+        {engine && (
+          <div className={screen.name === "live" ? "" : "hidden"}>
+            <Live
+              key={engine.key}
+              night={nightOn && screen.name === "live"}
+              whistles={store.whistles ?? DEFAULT_WHISTLES}
+              autoPause={store.autoPause !== false}
+              onHud={setHud}
+              onMinimize={() => go({ name: "home" })}
+              draft={{
+                mode: engine.mode,
+                mascot: store.mascot,
+                interval: engine.mode === "tiros" ? intervalCfg : undefined,
+                run: engine.mode === "corrida" ? runCfg : undefined,
+                gpsMode: engine.initial?.gpsMode ?? gpsMode,
+              }}
+              initial={engine.initial}
+              onAbort={() => {
+                setEngine(null);
+                setHud(null);
+                go({ name: "home" });
+              }}
+              onFinished={(activity) => {
+                setEngine(null);
+                setHud(null);
+                patch({ ...store, activities: [activity, ...store.activities] });
+                go({ name: "summary", id: activity.id });
+              }}
+            />
+          </div>
+        )}
+        {screen.name === "summary" && (
+          <Summary
+            activity={store.activities.find((a) => a.id === screen.id) ?? null}
+            onMap={() => go({ name: "detail", id: screen.id })}
+            onClose={() => go({ name: "home" })}
+          />
+        )}
+        {screen.name === "activities" && (
+          <Activities
+            activities={store.activities}
+            onOpen={(id) => go({ name: "detail", id })}
+            onClearDemos={() =>
+              patch({ ...store, activities: store.activities.filter((a) => !a.demo) })
+            }
+          />
+        )}
+        {screen.name === "detail" && (
+          <Detail
+            activity={store.activities.find((a) => a.id === screen.id) ?? null}
+            onBack={() => go({ name: "activities" })}
+            onDelete={() => {
+              patch({ ...store, activities: store.activities.filter((a) => a.id !== screen.id) });
+              go({ name: "activities" });
+            }}
+          />
+        )}
+        {screen.name === "evolution" && <Evolution activities={store.activities} />}
+        {screen.name === "perms" && (
+          <Perms
+            seen={store.permsSeen}
+            store={store}
+            onBack={() => go({ name: "home" })}
+            onSeen={() => patch({ ...store, permsSeen: true })}
+            onGps={() => setGpsMode("device")}
+            onPatch={patch}
+          />
         )}
       </div>
+      {engine && screen.name !== "live" ? (
+        <button
+          type="button"
+          className="mx-3 mb-2 card px-3 py-2 text-left"
+          onClick={() => go({ name: "live", mode: engine.mode })}
+        >
+          <span className="block font-display text-lg leading-none">Corrida em andamento</span>
+          <span className="mt-1 block text-sm text-ink/70">
+            {hud?.status === "paused"
+              ? hud.pauseReason === "auto"
+                ? "Parado na rua · tempo pausado"
+                : "Pausado na mão"
+              : (hud?.phaseLabel ?? "Relógio seguindo")}
+            {" · "}
+            {formatClock(hud?.remainSec ?? hud?.elapsedSec ?? 0)}
+          </span>
+        </button>
+      ) : null}
+      {screen.name === "home" || screen.name === "activities" || screen.name === "evolution" ? (
+        <nav className="grid grid-cols-3 gap-2 border-t-[3px] border-ink bg-paper px-3 py-2">
+          <NavButton
+            label="Pista"
+            on={screen.name === "home"}
+            onClick={() => go({ name: "home" })}
+            icon={<Flag size={18} />}
+          />
+          <NavButton
+            label="Atividades"
+            on={screen.name === "activities"}
+            onClick={() => go({ name: "activities" })}
+            icon={<History size={18} />}
+          />
+          <NavButton
+            label="Evolução"
+            on={screen.name === "evolution"}
+            onClick={() => go({ name: "evolution" })}
+            icon={<TrendingUp size={18} />}
+          />
+        </nav>
+      ) : null}
     </div>
   );
 }
+
