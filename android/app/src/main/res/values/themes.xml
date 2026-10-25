@@ -4,5 +4,15 @@
         <item name="android:statusBarColor">#F4E4C4</item>
         <item name="android:navigationBarColor">#F4E4C4</item>
         <item name="android:windowLightStatusBar">true</item>
+        <!-- Fundo preto atrás do Compose: sem flash branco ao abrir. -->
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+
+    <!-- Tema de abertura (API 26-30): janela preta até o Compose desenhar o splash "GROK RUN". -->
+    <style name="Theme.GrokRun.Starting" parent="Theme.GrokRun">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

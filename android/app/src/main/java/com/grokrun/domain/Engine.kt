@@ -1,6 +1,6 @@
 package com.grokrun.domain
 
-enum class MascotId { BOLA, NUVEM, CONE }
+enum class MascotId { BOLA, TRIANGULO, HEXAGONO, FANTASMA, OBLONGO, QUADRADO }
 
 enum class Mode { TIROS, CORRIDA }
 

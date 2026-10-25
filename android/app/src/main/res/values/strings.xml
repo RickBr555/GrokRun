@@ -3,4 +3,12 @@
     <string name="app_name">GrokRun</string>
     <string name="channel_name">Treino em andamento</string>
     <string name="channel_desc">Fase e tempo restante do treino</string>
+    <string name="home_title">GROK RUN</string>
+    <string name="home_start">COMEÇAR</string>
+    <string name="home_street_game">Jogo de rua</string>
+    <string name="home_street_game_soon">Jogo de rua: em breve!</string>
+    <string name="nav_workouts">Pista</string>
+    <string name="nav_history">Atividades</string>
+    <string name="nav_evolution">Evolução</string>
+    <string name="settings">Ajustes</string>
 </resources>

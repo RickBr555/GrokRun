@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+: splash do sistema com fundo preto, depois o splash "GROK RUN" em Compose. -->
+    <style name="Theme.GrokRun.Starting" parent="Theme.GrokRun">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowSplashScreenBackground">@android:color/black</item>
+        <!-- Sem ícone: só preto até o Compose mostrar "GROK RUN" em branco. -->
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+    </style>
+</resources>
