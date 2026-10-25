@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder substituível: mascote Nuvem. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="160dp"
+    android:viewportWidth="120"
+    android:viewportHeight="160">
+    <path android:fillColor="#F4E4C4" android:pathData="M0,0h120v160h-120z" />
+    <path android:fillColor="#FFFFFF" android:strokeColor="#1C140C" android:strokeWidth="4" android:pathData="M30,70c0,-22 18,-34 34,-28c6,-14 28,-14 34,2c16,-2 26,14 18,28c10,6 8,20 -4,24h-78c-12,-2 -14,-16 -4,-26z" />
+    <path android:fillColor="#E23D2B" android:pathData="M42,48h36v6h-36z" />
+    <path android:fillColor="#1C140C" android:pathData="M28,96c6,20 10,28 4,36 M92,96c-6,20 -10,28 -4,36" />
+    <path android:fillColor="#FFFFFF" android:strokeColor="#1C140C" android:strokeWidth="3" android:pathData="M22,112a10,8 0 1,0 0.1,0z M88,112a10,8 0 1,0 0.1,0z" />
+</vector>

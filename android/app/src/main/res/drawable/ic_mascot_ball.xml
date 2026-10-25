@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder substituível: mascote Bola, rubber hose. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="160dp"
+    android:viewportWidth="120"
+    android:viewportHeight="160">
+    <path android:fillColor="#F4E4C4" android:pathData="M0,0h120v160h-120z" />
+    <path android:fillColor="#E23D2B" android:strokeColor="#1C140C" android:strokeWidth="4" android:pathData="M60,18a28,28 0 1,0 0.1,0z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M46,36h28v6h-28z" />
+    <path android:fillColor="#E23D2B" android:strokeColor="#1C140C" android:strokeWidth="4" android:pathData="M34,78c-10,18 -8,36 6,40c8,-16 8,-28 2,-40z" />
+    <path android:fillColor="#E23D2B" android:strokeColor="#1C140C" android:strokeWidth="4" android:pathData="M86,78c10,18 8,36 -6,40c-8,-16 -8,-28 -2,-40z" />
+    <path android:fillColor="#FFFFFF" android:strokeColor="#1C140C" android:strokeWidth="3" android:pathData="M24,108a10,8 0 1,0 0.1,0z M86,108a10,8 0 1,0 0.1,0z" />
+    <path android:fillColor="#E23D2B" android:strokeColor="#1C140C" android:strokeWidth="4" android:pathData="M48,100h8v36h-8z M64,100h8v36h-8z" />
+    <path android:fillColor="#E23D2B" android:strokeColor="#1C140C" android:strokeWidth="3" android:pathData="M42,136h20v12h-20z M62,136h20v12h-20z" />
+</vector>
