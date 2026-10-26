@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Flag, History, TrendingUp, Volume2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { buildIntervalPhases, schedulePhases, totalSeconds } from "@/lib/grokrun/engine";
 import {
   formatClock,
@@ -31,10 +31,10 @@ import {
   type WorkoutMode,
 } from "@/lib/grokrun/types";
 import { playWhistle, unlockAudio, WHISTLE_CHOICES } from "@/lib/grokrun/audio";
-import { BackBar, LaneCross, MascotCel, MASCOTS, mascotName, mascotSrc, NightChase, PhaseBar, RunClip, TimeStepper, TrackStage } from "./bits";
+import { BackBar, MascotCel, NightChase, RunCycle } from "./bits";
 import { RaceGame } from "./RaceGame";
 import { BarMini, ElevationChart, PaceChart } from "./Charts";
-import { MapView } from "./MapView";
+import { LiveMap } from "./MapView";
 import { useWorkout, type Hud } from "./useWorkout";
 
 export function Live({
@@ -80,10 +80,18 @@ export function Live({
         : formatClock(hud?.elapsedSec ?? 0);
   const paused = hud?.status === "paused";
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-2">
       {night ? <NightChase id={draft.mascot} /> : null}
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="flex items-start gap-2">
+        <button
+          type="button"
+          aria-label="Voltar para a pista"
+          className="grid size-11 shrink-0 place-items-center rounded-2xl border-[3px] border-ink bg-cream"
+          onClick={onMinimize}
+        >
+          <ArrowLeft size={22} />
+        </button>
+        <div className="min-w-0 flex-1">
           <p className="text-sm text-ink/65">
             {paused ? (hud?.pauseReason === "auto" ? "Parado na rua" : "Pausado") : "Agora"}
           </p>
@@ -95,7 +103,11 @@ export function Live({
             {hud?.nextLabel ? ` · depois: ${hud.nextLabel}` : ""}
           </p>
         </div>
-        {night ? null : <MascotCel id={draft.mascot} pose={pose} frameClass="h-24 w-20" />}
+        {night ? null : pose === "run" ? (
+          <RunCycle id={draft.mascot} small className="h-20 w-20 shrink-0" />
+        ) : (
+          <MascotCel id={draft.mascot} pose={pose} frameClass="h-24 w-20" />
+        )}
       </div>
       <div className="card px-3 py-5 text-center">
         <p className="font-display text-7xl leading-none tabular-nums">{big}</p>
@@ -104,6 +116,7 @@ export function Live({
           {hud?.totalSec ? ` · total ${formatClock(hud.totalSec)}` : ""}
         </p>
       </div>
+      <LiveMap points={w.session()?.points ?? []} className="min-h-40 flex-1" />
       {paused && hud?.pauseReason === "auto" ? (
         <p className="text-center text-sm text-ink/70">
           Você parou. O tempo pausou. Quando andar de novo, continua sozinho.
@@ -145,7 +158,7 @@ export function Live({
           </button>
         )}
         <button type="button" className="btn btn-ink py-3 text-xl" onClick={w.askStop}>
-          Parar
+          Finalizar
         </button>
       </div>
       {paused && hud?.pauseReason === "auto" ? (
@@ -159,14 +172,14 @@ export function Live({
       {w.saving ? <p className="text-center text-sm">Ajustando elevação…</p> : null}
       {w.confirming ? (
         <div className="card p-3">
-          <p className="font-display text-xl">Parar o treino?</p>
-          <p className="text-sm text-ink/70">O que já foi feito será salvo.</p>
+          <p className="font-display text-xl">Finalizar corrida?</p>
+          <p className="text-sm text-ink/70">O que você já correu fica salvo e aparece o resumo.</p>
           <div className="mt-2 flex gap-2">
             <button type="button" className="btn btn-cinder flex-1 py-2" onClick={w.confirmStop}>
-              Parar e salvar
+              Sim
             </button>
-            <button type="button" className="btn btn-cream px-4 py-2" onClick={w.cancelStop}>
-              Voltar
+            <button type="button" className="btn btn-cream flex-1 py-2" onClick={w.cancelStop}>
+              Continuar
             </button>
           </div>
         </div>

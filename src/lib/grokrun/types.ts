@@ -1,4 +1,25 @@
-export type MascotId = "bola" | "chapeu" | "neve" | "verde" | "pingo" | "nuvem" | "quadrado" | "toalha" | "gorro" | "fantasma" | "fone" | "rosa" | "cone";
+export type MascotId = "bola" | "triangulo" | "hexagono" | "fantasma" | "oblongo" | "quadrado";
+
+const MASCOT_ALIAS: Record<string, MascotId> = {
+  bola: "bola",
+  triangulo: "triangulo",
+  pingo: "triangulo",
+  hexagono: "hexagono",
+  nuvem: "hexagono",
+  fantasma: "fantasma",
+  oblongo: "oblongo",
+  chapeu: "oblongo",
+  cone: "oblongo",
+  rosa: "oblongo",
+  quadrado: "quadrado",
+  toalha: "quadrado",
+  gorro: "quadrado",
+};
+
+export function canonMascot(id: string | undefined | null): MascotId {
+  if (id && id in MASCOT_ALIAS) return MASCOT_ALIAS[id];
+  return "bola";
+}
 
 export type WorkoutMode = "tiros" | "corrida";
 

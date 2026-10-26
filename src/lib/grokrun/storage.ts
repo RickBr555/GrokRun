@@ -1,5 +1,5 @@
 import type { Session } from "./session";
-import { DEFAULT_WHISTLES, type StoreData } from "./types";
+import { DEFAULT_WHISTLES, canonMascot, type StoreData } from "./types";
 
 const STORE_KEY = "grokrun-v1";
 const LIVE_KEY = "grokrun-live";
@@ -13,7 +13,10 @@ export function normalizeStore(data: StoreData): StoreData {
     nightMode: data.nightMode ?? "auto",
     autoPause: data.autoPause !== false,
     whistles: { ...DEFAULT_WHISTLES, ...(data.whistles ?? {}) },
-    mascot: data.mascot ?? "bola",
+    mascot: canonMascot(data.mascot),
+    activities: Array.isArray(data.activities)
+      ? data.activities.map((a) => ({ ...a, mascot: canonMascot(a.mascot) }))
+      : [],
   };
 }
 
@@ -43,6 +46,7 @@ export function loadLive(): Session | null {
     if (!raw) return null;
     const s = JSON.parse(raw) as Session;
     if (!s || !s.phases || s.status === "done") return null;
+    s.mascot = canonMascot(s.mascot);
     s.pauseReason ??= s.status === "paused" ? "manual" : null;
     s.stillSince ??= null;
     s.moveSince ??= null;

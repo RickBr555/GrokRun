@@ -196,12 +196,12 @@ export function createInitialStore(): StoreData {
     cooldownSec: 2 * 60,
   };
   const activities: Activity[] = [
-    runSim("tiros", "cone", atHour(26, 7), classic, undefined, 0.9, null),
-    runSim("corrida", "nuvem", atHour(22, 18), undefined, { fastSec: 360, slowSec: 390, windowSec: 20 }, 0, 32 * 60),
+    runSim("tiros", "oblongo", atHour(26, 7), classic, undefined, 0.9, null),
+    runSim("corrida", "hexagono", atHour(22, 18), undefined, { fastSec: 360, slowSec: 390, windowSec: 20 }, 0, 32 * 60),
     runSim("tiros", "bola", atHour(18, 7), classic, undefined, 0.96, null),
-    runSim("tiros", "nuvem", atHour(12, 6), doubles, undefined, 1.02, null),
+    runSim("tiros", "hexagono", atHour(12, 6), doubles, undefined, 1.02, null),
     runSim("corrida", "bola", atHour(8, 19), undefined, { fastSec: 330, slowSec: 360, windowSec: 20 }, 0, 28 * 60),
-    runSim("tiros", "cone", atHour(4, 7), classic, undefined, 1.08, null),
+    runSim("tiros", "triangulo", atHour(4, 7), classic, undefined, 1.08, null),
   ];
   return {
     mascot: "bola",

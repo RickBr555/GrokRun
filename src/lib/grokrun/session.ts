@@ -267,9 +267,11 @@ export function advance(s: Session, now: number): CueEvent[] {
     }
     if (idx >= s.phases.length) {
       closeThrough(s, s.phases.length, elapsed);
-      s.pauseStarted = now;
-      s.status = "done";
-      events.push({ type: "done" });
+      // O plano acabou, mas a corrida só termina no Finalizar.
+      if (!s.fired.includes("plan-done")) {
+        s.fired.push("plan-done");
+        events.push({ type: "done" });
+      }
       return events;
     }
     for (let i = s.closedUntil + 1; i <= idx; i++) {

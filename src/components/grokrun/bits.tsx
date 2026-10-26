@@ -1,25 +1,19 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import type { MascotId, PhaseKind } from "@/lib/grokrun/types";
 import { formatClock } from "@/lib/grokrun/format";
 
 export const MASCOTS: { id: MascotId; name: string; tag: string }[] = [
-  { id: "bola", name: "Bola", tag: "faixa" },
-  { id: "chapeu", name: "Chapéu", tag: "bola" },
-  { id: "neve", name: "Neve", tag: "boneco" },
-  { id: "verde", name: "Sete", tag: "garrafa" },
-  { id: "pingo", name: "Triângulo", tag: "" },
-  { id: "nuvem", name: "Hexa", tag: "telefone" },
-  { id: "quadrado", name: "Quadrado", tag: "" },
-  { id: "toalha", name: "Toalha", tag: "" },
-  { id: "gorro", name: "Azul", tag: "telefone" },
+  { id: "bola", name: "Bola", tag: "" },
+  { id: "triangulo", name: "Triângulo", tag: "" },
+  { id: "hexagono", name: "Hexágono", tag: "" },
   { id: "fantasma", name: "Fantasma", tag: "" },
-  { id: "fone", name: "Fone", tag: "" },
-  { id: "rosa", name: "Faixa", tag: "laranja" },
-  { id: "cone", name: "Disco", tag: "chapéu" },
+  { id: "oblongo", name: "Boné", tag: "" },
+  { id: "quadrado", name: "Quadrado", tag: "" },
 ];
 
-export function mascotSrc(_id: MascotId, _pose: "idle" | "run" | "rest" | "scared"): string {
-  return `/mascots/${_id}-sheet.png`;
+export function mascotSrc(id: MascotId, pose: "idle" | "run" | "rest" | "scared" = "idle"): string {
+  const frame = pose === "scared" ? "idle" : pose;
+  return `/scene/mascot_${id}_${frame}.png`;
 }
 
 export function mascotVideo(id: MascotId): string {
@@ -28,6 +22,79 @@ export function mascotVideo(id: MascotId): string {
 
 export function mascotName(id: MascotId): string {
   return MASCOTS.find((m) => m.id === id)?.name ?? "Bola";
+}
+
+/** Ciclo de 16 quadros (folha 4×4), 1,3 voltas por segundo. O fantasma já flutua na folha. */
+export function RunCycle({
+  id,
+  className = "",
+  hz = 1.3,
+  small = false,
+}: {
+  id: MascotId;
+  className?: string;
+  hz?: number;
+  small?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const el = ref.current;
+    if (!el) return;
+    const place = (frame: number) => {
+      const col = frame % 4;
+      const row = Math.floor(frame / 4);
+      el.style.backgroundPosition = `${col * (100 / 3)}% ${row * (100 / 3)}%`;
+    };
+    if (reduce) {
+      place(0);
+      return;
+    }
+    let raf = 0;
+    const t0 = performance.now();
+    const loop = (t: number) => {
+      place(Math.floor(((t - t0) / 1000) * hz * 16) % 16);
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [hz]);
+  return (
+    <div
+      ref={ref}
+      aria-hidden="true"
+      className={`run-cycle ${className}`}
+      style={{ backgroundImage: `url(/scene/runsheet_${id}${small ? "_s" : ""}.webp)` }}
+    />
+  );
+}
+
+export function Meadow({
+  critters,
+  children,
+}: {
+  critters?: { id: MascotId; pose: "idle" | "rest" }[];
+  children: ReactNode;
+}) {
+  return (
+    <div className="meadow relative -mx-4 min-h-full px-4 pb-28">
+      <div className="meadow-sky pointer-events-none absolute inset-0" />
+      <div className="meadow-grass pointer-events-none absolute inset-x-0 bottom-0 h-24" />
+      {critters?.length ? (
+        <div className="pointer-events-none absolute inset-x-1 bottom-8 flex items-end justify-between">
+          {critters.map((c, i) => (
+            <img
+              key={`${c.id}-${i}`}
+              src={mascotSrc(c.id, c.pose)}
+              alt=""
+              className="h-14 w-auto object-contain"
+            />
+          ))}
+        </div>
+      ) : null}
+      <div className="relative flex flex-col gap-3">{children}</div>
+    </div>
+  );
 }
 
 export function RunClip({
@@ -98,7 +165,7 @@ export function NightChase({ id }: { id: MascotId }) {
         </div>
       </div>
       <div className="night-ghost-wrap">
-        <img className="night-ghost" src="/mascots/ghost-sheet.png" alt="" />
+        <img className="night-ghost" src={mascotSrc("fantasma", "run")} alt="" />
       </div>
     </div>
   );
@@ -116,7 +183,7 @@ export function LaneCross({ ids, fast = false }: { ids: MascotId[]; fast?: boole
       {fast ? <div className="lane-wind" /> : null}
       <div className="lane-mover">
         {ids.map((id) => (
-          <img key={id} src={`/mascots/${id}-sheet.png`} alt="" className="lane-clip" />
+          <img key={id} src={mascotSrc(id, "run")} alt="" className="lane-clip" />
         ))}
       </div>
     </div>

@@ -67,10 +67,11 @@ function readHud(s: Session, now: number): Hud {
     phase && (phase.kind === "sprint" || phase.kind === "rest" || phase.kind === "cycleRest")
       ? phase.sprint
       : null;
+  const pastPlan = s.mode === "tiros" && idx >= s.phases.length && s.status === "running";
   return {
     status: s.status,
     prepareCount,
-    phaseLabel: s.status === "prepare" ? "Preparar" : (phase?.label ?? "Fim"),
+    phaseLabel: s.status === "prepare" ? "Preparar" : pastPlan ? "Plano feito" : (phase?.label ?? "Fim"),
     phaseKind: phase?.kind ?? null,
     remainSec,
     elapsedSec: elapsed / 1000,

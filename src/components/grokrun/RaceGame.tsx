@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { MascotId } from "@/lib/grokrun/types";
-import { BackBar, mascotSrc } from "./bits";
+import { BackBar, RunCycle } from "./bits";
 
 const BEST_KEY = "grokrun-race-best";
 const SLOTS = 3;
@@ -14,7 +14,7 @@ type Slot = { x: number; on: boolean };
 export function RaceGame({ id, onBack }: { id: MascotId; onBack: () => void }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const runnerRef = useRef<HTMLDivElement>(null);
-  const bobRef = useRef<HTMLImageElement>(null);
+  const bobRef = useRef<HTMLDivElement>(null);
   const scoreRef = useRef<HTMLSpanElement>(null);
   const slotRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [phase, setPhase] = useState<"ready" | "run" | "dead">("ready");
@@ -178,7 +178,9 @@ export function RaceGame({ id, onBack }: { id: MascotId; onBack: () => void }) {
           </div>
         ))}
         <div ref={runnerRef} className="race-runner">
-          <img ref={bobRef} src={mascotSrc(id, "run")} alt="" className="race-bob" />
+          <div ref={bobRef} className="race-bob">
+            <RunCycle id={id} small className="h-[7.4rem] w-[7.4rem]" />
+          </div>
         </div>
         {phase !== "run" && (
           <div className="race-banner">

@@ -82,6 +82,7 @@ function useNightOn(mode: NightMode): boolean {
 
 export function GrokApp() {
   const [ready, setReady] = useState(false);
+  const [splash, setSplash] = useState(true);
   const [store, setStore] = useState<StoreData | null>(null);
   const [screen, setScreen] = useState<Screen>({ name: "home" });
   const [intervalCfg, setIntervalCfg] = useState<IntervalConfig>(DEFAULT_INTERVAL);
@@ -90,6 +91,11 @@ export function GrokApp() {
   const [engine, setEngine] = useState<Engine | null>(null);
   const [hud, setHud] = useState<Hud | null>(null);
   const nightOn = useNightOn(store?.nightMode ?? "auto");
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setSplash(false), 1000);
+    return () => window.clearTimeout(id);
+  }, []);
 
   useEffect(() => {
     const saved = loadStore() ?? createInitialStore();
@@ -114,9 +120,8 @@ export function GrokApp() {
 
   if (!ready || !store) {
     return (
-      <div className="app-frame items-center justify-center gap-3 px-6 text-center">
-        <p className="font-display text-5xl">GrokRun</p>
-        <p className="text-ink/70">Abrindo a pista…</p>
+      <div className="app-frame relative items-center justify-center bg-black">
+        <p className="font-display text-5xl tracking-wide text-white">GROK RUN</p>
       </div>
     );
   }
@@ -135,9 +140,16 @@ export function GrokApp() {
     go({ name: "live", mode });
   };
 
+  const homeStage = screen.name === "home" && store.profileReady;
+
   return (
-    <div className="app-frame">
-      <header className="flex items-center justify-between px-4 pt-4 pb-2">
+    <div className="app-frame relative">
+      {splash ? (
+        <div className="absolute inset-0 z-50 grid place-items-center bg-black">
+          <p className="font-display text-5xl tracking-wide text-white">GROK RUN</p>
+        </div>
+      ) : null}
+      <header className={`flex items-center justify-between px-4 pt-4 pb-2 ${homeStage ? "hidden" : ""}`}>
         <div>
           <p className="font-display text-3xl leading-none tracking-wide">GrokRun</p>
           <p className="text-sm text-ink/65">tiros, pace e percurso</p>
@@ -150,13 +162,23 @@ export function GrokApp() {
           Ajustes
         </button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+      <div
+        className={
+          screen.name === "live"
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2"
+            : homeStage
+              ? "flex min-h-0 flex-1 flex-col"
+              : "min-h-0 flex-1 overflow-y-auto px-4 pb-4"
+        }
+      >
         {screen.name === "home" && (
           <Home
             mascot={store.mascot}
             name={store.runnerName}
             profileReady={store.profileReady}
             running={engine != null}
+            elapsedSec={hud?.elapsedSec ?? 0}
+            paused={hud?.status === "paused"}
             onSaveProfile={(name, id) =>
               patch({ ...store, runnerName: name.trim() || "Grok", mascot: id, profileReady: true })
             }
@@ -165,6 +187,7 @@ export function GrokApp() {
               else go({ name: "mode" });
             }}
             onPlay={() => go({ name: "game" })}
+            onSettings={() => go({ name: "perms" })}
           />
         )}
         {screen.name === "game" && <RaceGame id={store.mascot} onBack={() => go({ name: "home" })} />}
@@ -224,7 +247,7 @@ export function GrokApp() {
           />
         )}
         {engine && (
-          <div className={screen.name === "live" ? "" : "hidden"}>
+          <div className={screen.name === "live" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
             <Live
               key={engine.key}
               night={nightOn && screen.name === "live"}
@@ -292,22 +315,17 @@ export function GrokApp() {
           />
         )}
       </div>
-      {engine && screen.name !== "live" ? (
+      {engine && screen.name !== "live" && screen.name !== "home" ? (
         <button
           type="button"
           className="mx-3 mb-2 card px-3 py-2 text-left"
           onClick={() => go({ name: "live", mode: engine.mode })}
         >
-          <span className="block font-display text-lg leading-none">Corrida em andamento</span>
-          <span className="mt-1 block text-sm text-ink/70">
-            {hud?.status === "paused"
-              ? hud.pauseReason === "auto"
-                ? "Parado na rua · tempo pausado"
-                : "Pausado na mão"
-              : (hud?.phaseLabel ?? "Relógio seguindo")}
-            {" · "}
-            {formatClock(hud?.remainSec ?? hud?.elapsedSec ?? 0)}
+          <span className="block font-display text-lg leading-none">
+            {hud?.status === "paused" ? "Corrida pausada" : "Corrida em andamento"} •{" "}
+            {formatClock(hud?.elapsedSec ?? 0)}
           </span>
+          <span className="mt-1 block text-sm text-ink/70">Voltar ›</span>
         </button>
       ) : null}
       {screen.name === "home" || screen.name === "activities" || screen.name === "evolution" ? (
