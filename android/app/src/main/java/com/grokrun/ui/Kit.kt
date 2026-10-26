@@ -199,9 +199,21 @@ fun CountStepper(label: String, value: Int, min: Int, max: Int, onChange: (Int) 
 @Composable
 fun BackBar(title: String, onBack: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        GrokButton("Voltar", onBack, size = 16.sp, height = 42.dp)
-        DisplayText(title, 26.sp)
+        BackArrow(onBack)
+        DisplayText(title, 26.sp, Modifier.weight(1f))
     }
+}
+
+/** Seta "voltar" (caixa creme 44 dp, borda tinta), a mesma da tela de corrida. */
+@Composable
+fun BackArrow(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val t = LocalGrokTheme.current
+    Box(
+        modifier.size(44.dp).clip(RoundedCornerShape(14.dp))
+            .background(t.cream).border(3.dp, t.ink, RoundedCornerShape(14.dp))
+            .clickable(onClickLabel = "Voltar", onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(GrokIcon.BACK, t.ink, 22.dp) }
 }
 
 /** Stat da web: cartão com rótulo pequeno e valor em display. */

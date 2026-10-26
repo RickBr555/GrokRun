@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -438,12 +439,7 @@ fun LiveScreen(onSaved: (String) -> Unit, onMinimize: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.Top) {
             // Voltar para a Pista: o treino continua rodando (a pílula na Pista traz de volta).
-            Box(
-                Modifier.padding(end = 8.dp, top = 2.dp).size(44.dp).clip(RoundedCornerShape(14.dp))
-                    .background(t.cream).border(3.dp, t.ink, RoundedCornerShape(14.dp))
-                    .clickable(onClick = onMinimize),
-                contentAlignment = Alignment.Center,
-            ) { Icon(GrokIcon.BACK, t.ink, 22.dp) }
+            BackArrow(onMinimize, Modifier.padding(end = 8.dp, top = 2.dp))
             Column(Modifier.weight(1f)) {
                 Hint(if (paused) (if (h?.pauseReason == "auto") "Parado na rua" else "Pausado") else "Agora", alpha = 0.65f)
                 DisplayText(h?.phaseLabel ?: "Preparar", 30.sp)
@@ -559,6 +555,9 @@ private fun elevSourceText(src: String) = when (src) {
 @Composable
 fun SummaryScreen(id: String, onMap: () -> Unit, onClose: () -> Unit) {
     val ctx = LocalContext.current
+    val t = LocalGrokTheme.current
+    // Gesto/botão "voltar" do sistema: igual ao "Fechar" (volta para a Pista).
+    BackHandler(onBack = onClose)
     val data = rememberWorkout(id) ?: return
     val w = data.first
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -568,12 +567,16 @@ fun SummaryScreen(id: String, onMap: () -> Unit, onClose: () -> Unit) {
             return@Column
         }
         val phases = parsePhases(w.phasesJson)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.Top) {
+            // Voltar (mesmo estilo da seta da tela de corrida): faz o mesmo que "Fechar".
+            BackArrow(onClose, Modifier.padding(end = 4.dp, top = 2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Image(painterResource(Mascot.of(w.mascot).rest), null, Modifier.size(96.dp))
             Column {
                 DisplayText("Treino salvo", 30.sp)
                 Hint("${modeName(w.mode)} · ${formatWhen(w.startedAt)}")
             }
+        }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Stat("Tempo", formatClock(w.durationSec), Modifier.weight(1f))
