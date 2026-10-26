@@ -15,7 +15,7 @@ minSdk 26 · targetSdk 35 · compileSdk 35.
 ## O que o app faz
 
 - **Tiros:** aquecimento, tiros, descanso entre tiros (sem descanso depois do último do ciclo), descanso entre ciclos e desaquecimento. O tempo total é calculado. Durante o treino: fase, tempo restante, tiro X/Y, ciclo X/Y, pace, velocidade e distância.
-- **Corrida:** faixa de pace. A média móvel usa uma janela de 15–30 s. O alerta só sai depois de 5 s contínuos fora da faixa e no máximo a cada 15 s. Rápido demais: bipe agudo duplo. Lento demais: bipe grave longo. Dentro da faixa: silêncio. O áudio pede `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`.
+- **Corrida:** faixa de pace. A média móvel usa uma janela de 15–30 s. O alerta só sai depois de 5 s contínuos fora da faixa e no máximo a cada 15 s. Rápido demais: bipe agudo duplo. Lento demais: bipe grave longo. Dentro da faixa: silêncio. O áudio pede `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` só na hora de cada bipe e solta ~600 ms depois, então a música só abaixa durante o apito.
 - **Relógio:** todas as trocas são horários absolutos em `SystemClock.elapsedRealtime()`. Pausar e retomar deslocam esses horários. Não há contador que incrementa a cada tick.
 - **Serviço:** `WorkoutService` é um foreground service com `foregroundServiceType="location"`, notificação com pausar/retomar/parar, e `PARTIAL_WAKE_LOCK`. Se a activity fechar, o treino continua.
 - **GPS:** `FusedLocationProviderClient`, `PRIORITY_HIGH_ACCURACY`, intervalo de 1 s. Pontos com precisão > 20 m ou salto acima de 25 km/h são descartados. A coordenada gravada passa por uma suavização leve.
@@ -26,16 +26,13 @@ minSdk 26 · targetSdk 35 · compileSdk 35.
 - **Presets:** alguns já vêm gravados no Room (“3 tiros de 1 min, 2 ciclos”, “Teste rápido”, …).
 - **Permissões:** a tela Ajustes pede localização precisa, localização em segundo plano, notificações e isenção de otimização de bateria (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`), com o motivo de cada uma.
 
-## Trocar as artes
+## Mascotes
 
-Os mascotes placeholder estão em `app/src/main/res/drawable/`:
-
-- `ic_mascot_ball.xml`
-- `ic_mascot_cloud.xml`
-- `ic_mascot_cone.xml`
-
-Pode substituir por vetores finais ou por Lottie (adicione a dependência e troque o `Image` na home). O estilo pedido é rubber hose dos anos 1930: mangueira sem cotovelo/joelho, luvas e tênis grandes, olhos ovais, contorno preto grosso.
+Os seis mascotes ficam em `app/src/main/res/drawable-nodpi/` como PNG com fundo transparente, três poses cada:
+`mascot_<id>_idle.png` (parado), `mascot_<id>_run.png` (correndo) e `mascot_<id>_rest.png` (sentado na cadeira).
+Ids: `bola`, `triangulo`, `hexagono`, `fantasma`, `oblongo` (aparece como "Boné") e `quadrado`.
+A lista está em `ui/Mascots.kt`; o mascote escolhido fica salvo em SharedPreferences. Para trocar uma arte, basta substituir o PNG com o mesmo nome.
 
 ## Testes
 
-`app/src/test/java/com/grokrun/domain/EngineTest.kt` cobre a sequência dos tiros (sem descanso depois do último do ciclo), o tempo total e o relógio com pausa. Rode com `./gradlew :app:testDebugUnitTest` depois que o SDK estiver instalado.
+`app/src/test/java/com/grokrun/domain/EngineTest.kt` cobre a sequência dos tiros (sem descanso depois do último do ciclo), o tempo total e o relógio com pausa. (O arquivo de testes não veio no repositório.)
