@@ -658,7 +658,7 @@ class WorkoutService : Service() {
         } else null
         Live.hud.value = Hud(
             status = c.status,
-            phaseLabel = if (c.status == RunStatus.PREPARE) "Preparar" else phase?.label ?: "Fim",
+            phaseLabel = if (c.status == RunStatus.PREPARE) "Preparar" else phase?.label ?: if (c.phases.size > 1 || c.phases.firstOrNull()?.durationSec?.let { it > 0 } == true) "Plano feito" else "Fim",
             remainSec = remain,
             elapsedSec = (c.elapsed(now) / 1000).toInt(),
             sprint = phase?.sprint?.let { "$it/${interval?.sprintsPerCycle ?: it}" },

@@ -193,9 +193,9 @@ class WorkoutClock(val phases: List<PhasePlan>) {
                 if (n > 0 && phase.durationSec >= n && fired.add("cd-$current-$n")) events += "cd"
             }
             if (idx >= phases.size) {
-                pauseStarted = now
-                status = RunStatus.DONE
-                events += "done"
+                // O plano acabou (apito de fim), mas a corrida só termina no Finalizar:
+                // o relógio segue contando, como no site.
+                if (fired.add("plan-done")) events += "done"
                 return events
             }
             for (i in 1..idx) {

@@ -405,7 +405,8 @@ fun RunningBanner(onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val sec = hud?.elapsedSec ?: 0
-        DisplayText("Corrida em andamento • ${formatRunTime(sec)}", 18.sp, Modifier.weight(1f), color = t.onCinder)
+        val paused = hud?.status == com.grokrun.domain.RunStatus.PAUSED
+        DisplayText("${if (paused) "Corrida pausada" else "Corrida em andamento"} • ${formatRunTime(sec)}", 18.sp, Modifier.weight(1f), color = t.onCinder)
         DisplayText("Voltar ›", 16.sp, color = t.onCinder)
     }
 }
